@@ -1,0 +1,80 @@
+LoggerService change log
+========================
+
+ВАЖНЫЕ ИЗМЕНЕНИЯ И ИСПРАВЛЕНИЯ
+------------------------------
+
+20191022:
+
+  - интеграция с внешними приложениями (WebPerso), командый режим \app\modules\__init__.py:
+
+    > core.py
+    > app\modules\*.py
+    > ext\postonline.py, PochtaRuOnline['change_send_date'], changePostOnline
+    > ext\filetypes\postbank.py
+    > ext\order_generate\postbank.py, change_delivery_date
+
+  - сценарий ext\order_generate\__init__.py, (ключ 'auto'):  
+
+    (1, 'PostBank_v1',
+        [21, 0,],
+        {
+            'tags'   : everything,
+            'custom' : postbank.change_delivery_date,
+            'params' : {'date' : '23.10.2019', 'auto' : 1},
+            'forced' : 220666,
+
+            'change_status' : 0,
+        },
+    )
+
+  - обработка ошибок (sdtout, stderr):
+
+    > run.py
+    > popen.py
+
+20190114:
+
+  - Банк ОТКРЫТИЕ, загрузчик персофайлов PM_PRS (r'PM_PRS_0001_.*\.xml')
+
+    > ext\loader\otkrytie.py
+    > ext\defaults\__init__.py
+
+  - формат входящего файла FILE_FORMAT_PM_PRS (OpenWay)
+
+    > core.Loader.generate
+    > modules.__init__.py
+
+20190111:
+
+  - Банк ОТКРЫТИЕ, Предварительная обработка входящего персофайла
+
+    > ext\preloader\__init__.py
+    > ext\preloader\otkrytie.py
+
+  - модуль предобработки PRELOADER
+
+    > core.Preloader
+    > core.AbstractPreloaderClass
+    > modules.preloader
+    > types\datatypes.py
+    > types\filetypes.py
+    
+    > checker.py тип данных: DATA_TYPE_TEXT_A
+    > srvlib.py [SRV_Outgoing]
+    > xmllib.py [FMT_GetChildren]
+
+  - Банк ОТКРЫТИЕ, тип файла FILETYPE_OTKRYTIE_V1
+
+    > ext\filetypes\otkrytie.py
+
+ВЕРСИИ
+------
+
+# 1.30: 
+
+  - Интеграция с WebPerso.
+
+# 1.22: 
+
+  - Production application release.

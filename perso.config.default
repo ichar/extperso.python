@@ -1,0 +1,40 @@
+# -------
+# General
+# -------
+ID                 :: 0
+service_name       :: ExtPerso Default Service|ExtPerso Default Windows Service
+console            :: console
+seen               :: seen.perso.default
+errorlog           :: traceback-%(now)s-%(ctype)s-%(alias)s.log
+# -----------------
+# Debug/Trace flags
+# -----------------
+debug              :: 1
+deepdebug          :: 0
+trace              :: 0
+disableoutput      :: 0
+printexceptions    :: 1
+# ------
+# Source
+# ------
+root	           :: C:/!Pers2.1/
+ip                 :: 127.0.0.1
+ctype              :: bankperso
+alias              :: default
+timeout            :: 10.0
+reload             :: 1
+# -------------------
+# Scenario parameters
+# -------------------
+# PostBank merge interval
+postbank_merge     :: 12:00-17:15
+# Каталог выгрузки документов по отправлениям Почта России
+postbank_unload_to :: C:/PersoStation/Inkass/InputData/PostBank/postonline
+# Почта России F103
+pochta_mail_to     :: webdev@rosan.ru
+# ПОЧТАБАНК отгрузка
+postbank_mail_to   :: webdev@rosan.ru
+# Накладные Розан
+delivery_mail_to   :: webdev@rosan.ru
+# Время активации отгрузки
+postbank_active    :: 03:00-21:30
