@@ -43,43 +43,37 @@ default_iso            = 'ISO-8859-1'
 # ---------------------------- #
 
 CONNECTION = {
-   #'bankperso'    : { 'server':'172.19.12.84:10999', 'user':'sa', 'password':'rosan2012', 'database':'BankDB', 'timeout':15 },
-   #'bankperso'    : { 'server':'172.19.9.250:1433', 'user':'user', 'password':'user', 'database':'BankDB', 'timeout':15 },
-    'bankperso'    : { 'server':'localhost', 'user':'sa', 'password':'admin', 'database':'BankDB', 'timeout':15 },
-   #'cards'        : { 'server':'172.19.12.84:10999', 'user':'sa', 'password':'rosan2012', 'database':'Cards' },
-   #'cards'        : { 'server':'172.19.9.250:1433', 'user':'user', 'password':'user', 'database':'Cards', 'timeout':15 },
-    'cards'        : { 'server':'localhost', 'user':'sa', 'password':'admin', 'database':'Cards', 'timeout':15 },
-   #'configurator' : { 'server':'172.19.12.84:10999', 'user':'sa', 'password':'rosan2012', 'database':'BankDB', 'timeout':15 },
-   #'configurator' : { 'server':'172.19.9.250:1433', 'user':'user', 'password':'user', 'database':'BankDB', 'timeout':15 },
-    'configurator' : { 'server':'localhost', 'user':'sa', 'password':'admin', 'database':'BankDB', 'timeout':15  },
+    'bankperso'    : { 'server':'localhost', 'user':'sa', 'password':'*****', 'database':'BankDB', 'timeout':15 },
+    'cards'        : { 'server':'localhost', 'user':'sa', 'password':'*****', 'database':'Cards', 'timeout':15 },
+    'configurator' : { 'server':'localhost', 'user':'sa', 'password':'*****', 'database':'BankDB', 'timeout':15  },
 }
 
 smtphost1 = {
-    'host'         : '172.19.13.5', 
+    'host'         : '172.9.9.9', 
     'port'         : 25,
     'connect'      : None,
     'tls'          : 0,
     'method'       : 1,
-    'from'         : 'mailrobot@rosan.ru',
+    'from'         : 'mailrobot@company.ru',
 }
 
 smtphost2 = {
     'host'         : 'smtp-mail.outlook.com', 
     'port'         : 587,
-    'connect'      : {'login' : "support@expresscard.ru", 'password' : "Rof86788"},
+    'connect'      : {'login' : "support@company.ru", 'password' : "947326"},
     'tls'          : 1,
     'method'       : 2,
-    'from'         : 'support@expresscard.ru',
+    'from'         : 'support@company.ru',
 }
 
 smtphosts = (smtphost1, smtphost2)
 
 email_address_list = {
     'adminbd'      : 'admin_bd@rosan.ru',     
-    'support'      : 'support@expresscard.ru',
-    'russianpost'  : 'support@expresscard.ru',
-    'postbank'     : 'support@expresscard.ru',
-    'dhperso'      : 'support@expresscard.ru',
+    'support'      : 'support@company.ru',
+    'russianpost'  : 'support@company.ru',
+    'postbank'     : 'support@company.ru',
+    'dhperso'      : 'support@company.ru',
     'mailrobot'    : 'mailrobot@rosan.ru',
 }
 
@@ -90,10 +84,10 @@ persostation = 'C:/PersoStation'
 postonline = {
     'protocol'     : 'https://',
     'host'         : 'otpravka-api.pochta.ru',
-    'C1-A1'        : ('cAABSsusQyDpogZoHk0MplDrmusUdHQX', 'cG1tb3NAcm9zYW4ucnU6IXFVZWVuLVBS'),
-    'C2-BOX'       : ('cAABSsusQyDpogZoHk0MplDrmusUdHQX', 'cG1tb3NAcm9zYW4ucnU6IXFVZWVuLVBS'),
-    'C2-LETTER'    : ('IQXgXpRloNnX2f36f0Jxy5FMBg9_Xx_7', 'cG1tb3NAcm9zYW4ucnU6IXFVZWVuLVBS'),
-    'C3-LETTER'    : ('IQXgXpRloNnX2f36f0Jxy5FMBg9_Xx_7', 'cG1tb3NAcm9zYW4ucnU6IXFVZWVuLVBS'),
+    'C1-A1'        : ('cAABSsusQyDpogZoHk0MplDrmusUdHQX', 'GHSGETQ@#(@&!'),
+    'C2-BOX'       : ('cAABSsusQyDpogZoHk0MplDrmusUdHQX', 'GHSGETQ@#(@&!'),
+    'C2-LETTER'    : ('IQXgXpRloNnX2f36f0Jxy5FMBg9_Xx_7', 'GHSGETQ@#(@&!'),
+    'C3-LETTER'    : ('IQXgXpRloNnX2f36f0Jxy5FMBg9_Xx_7', 'GHSGETQ@#(@&!'),
 }
 
 image_encoding = {
