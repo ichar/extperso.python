@@ -1,0 +1,93 @@
+loader:
+STATUS_EMPTY                 0
+STATUS_CREATED               -> 1
+STATUS_REJECTED_INVALID      -> 214
+
+check:
+STATUS_CREATED               1      [custom:check_parameters]
+STATUS_PARAMETERS_CHECKED    -> 2   [outgoing]  (Файл-квитанция о приема персофайла)
+STATUS_REJECTED_INVALID      -> 214
+...
+STATUS_PARAMETERS_CHECKED    2      [custom:check_data]
+STATUS_DATA_CHECKED          -> 3   [outgoing]  (Файл-квитанция о приема персофайла)
+STATUS_REJECTED_ERROR        -> 201
+
+generate:
+STATUS_DATA_CHECKED          3      [custom:step1; status_to, status_error]
+STATUS_ON_GROUPED            -> 97  
+STATUS_DATA_GENERATED        -> 78
+STATUS_ON_ORDER_WAIT         -> 99
+STATUS_ON_SUSPENDED          -> 255 [ProcessException('Date Suspended is checked [step1]!', status=STATUS_ON_SUSPENDED)]
+STATUS_REJECTED_INVALID      -> 214
+...
+STATUS_ON_GROUPED            97     [custom:step2]
+STATUS_FILTER_VERIFIED       -> 5   
+STATUS_REJECTED_INVALID      -> 214
+...
+STATUS_FILTER_VERIFIED       5      [custom:step3]
+STATUS_DATA_GENERATED        -> 4   
+...
+STATUS_ON_CHECK_ICARD        78 обработка изображений от iCard
+
+                             [INDIGO] -> 4
+
+STATUS_REJECTED_INVALID      -> 214
+
+merge:
+STATUS_ON_ORDER_WAIT         99     [custom:custom]
+STATUS_ON_ARCHIVE_DONE       -> 199
+STATUS_ON_GROUPED            -> 97
+STATUS_ON_ERROR              -> 0
+
+STATUS_DATA_GENERATED        4  выполнена генерация общей дополнительной информации:
+
+                             [BankPerso] -> выполнена первичная пересортировка файла [36]
+                             [BankPerso] -> выполнена верификация данных [6]
+                             [BankPerso] -> создан отчет(заказ принят к обработке) [7]
+
+                             [BankPerso] -> печать пин-конвертов и генерация данных(старт обработки) [10]
+                             [BankPerso] -> печать пин-конвертов и генерация данных(обработка завершена) [11]
+                             [BankPerso] -> выполнена дополнительная генерация данных(PINGEN) [12]
+                             [BankPerso] -> генерация банковских чиповых данных(старт обработки) [44]
+                             [BankPerso] -> генерация банковских чиповых данных(обработка завершена) [45]
+                             [BankPerso] -> выполнена дополнительная генерация данных(BANKCHIP) [46]
+
+generate:
+STATUS_BANKCHIP_READY        46     [custom:custom_postonline]
+STATUS_POST_ONLINE_STARTED   -> 69
+
+STATUS_POST_ONLINE_STARTED   69     ...
+STATUS_ON_DELIVERY_DONE      -> 112
+STATUS_ON_SUSPENDED          -> 255
+
+STATUS_ON_DELIVERY_DONE      112 выполнена регистрация почтовых отправлений:
+
+                             [BankPerso] печать листовок(карты)(старт обработки) [23]
+                             [BankPerso] печать листовок(карты)(обработка завершена) [24]
+                             [BankPerso] предварительная инкассация (выгрузка данных) [79]
+                             [BankPerso] предварительная инкассация (завершено) [80]
+                             [BankPerso] персонализация карт(старт обработки) [21]
+                             [BankPerso] персонализация карт(обработка завершена) [22]
+                             [BankPerso] инкассация (карты)(старт обработки) [27]
+                             [BankPerso] инкассация (карты)(обработка завершена) [28]
+
+generate:
+STATUS_CARD_ENCASH_FINISHED  28     [custom:custom_postonline_sender]
+None                         ->
+
+report:
+STATUS_CARD_ENCASH_FINISHED  28     [custom:delivery_report]
+STATUS_REPORT_GEN_STARTED    -> 71  [send_mail] (Накладные на отгрузку DHL)
+...
+STATUS_READY                 62     [custom:post_report]
+STATUS_FINISHED              -> 198 [outgoing]  (Реестр ПОЧТА 1 КЛАСС)
+
+unloader:
+STATUS_REPORT_GEN_STARTED    71     [custom:sort_report]
+STATUS_ON_READY_ACT_GEN      -> 61  [csv]       (CRDSRT)
+
+STATUS_ON_READY_ACT_GEN      61  создание акта приема-передачи карт:
+
+                             [BankPerso] готов к отгрузке [62]
+
+STATUS_FINISHED              198 создан отчет(заказ обработан)

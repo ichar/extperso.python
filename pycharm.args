@@ -1,0 +1,27 @@
+Project:
+========
+
+ R:\scripts\perso
+
+Script:
+-------
+
+ R:\scripts\perso\run.py
+
+Script parameters:
+------------------
+
+Debug commands:
+
+ . perso.config.default "RUR::PostBank_v1::198-0-0::['postbank_report',218288]"
+ . perso.config.default "CSD::PostBank_v1::21-0-0::[everything,ext.order_generate.postbank.change_delivery_date,'23.10.2019',220666]"
+ . perso.config.default "CDA::PostBank_v1::21-0-0::[everything,ext.order_generate.postbank.change_delivery_address,'357538, –¿…,—“¿¬–ŒœŒÀ‹— »…,√,œﬂ“»√Œ–— ,”À ” –¿»Õ— ¿ﬂ,48¿',None,'202001658',221690]"
+
+Debug:
+
+ . perso.config.default
+
+Working directory:
+------------------
+
+ R:\scripts\perso

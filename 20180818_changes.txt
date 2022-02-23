@@ -1,0 +1,52 @@
+Tags:
+-----
+PackageCode -> PCode (ѕечать ѕ»Ќ-конвертов)
+
+TagValues:
+----------
+PCode=0|1 instead of 01|00
+6292	PostBank_v1	DeliveryType	ѕќ„“ј 1  Ћј——
+
+FilterShema:
+------------
+3761	PostBank_v1	печать пин-конвертов и генераци€ данных	CLIENTID	
+3763	PostBank_v1	печать пин-конвертов и генераци€ данных	DUMPBANK_FLAG	
+3765	PostBank_v1	печать пин-конвертов и генераци€ данных	PAY_SYSTEM	
+3764	PostBank_v1	печать пин-конвертов и генераци€ данных	PCode	
+4053	PostBank_v1	печать пин-конвертов и генераци€ данных	ProductDesign
+
+4049	PostBank_v1	персонализаци€ карт	CardType	
+4061	PostBank_v1	персонализаци€ карт	CASE_BOX	
+4067	PostBank_v1	персонализаци€ карт	CASE_COVER	
+4069	PostBank_v1	персонализаци€ карт	CASE_ENVELOPE	
+4065	PostBank_v1	персонализаци€ карт	CASE_LEAFLET	
+4063	PostBank_v1	персонализаци€ карт	CASE_PACKAGE	
+3773	PostBank_v1	персонализаци€ карт	CLIENTID	
+3774	PostBank_v1	персонализаци€ карт	DeliveryType	
+3775	PostBank_v1	персонализаци€ карт	DUMPBANK_FLAG	
+4059	PostBank_v1	персонализаци€ карт	PackageType	
+3777	PostBank_v1	персонализаци€ карт	PAY_SYSTEM	
+3776	PostBank_v1	персонализаци€ карт	PCode	
+3778	PostBank_v1	персонализаци€ карт	PlasticType	
+4055	PostBank_v1	персонализаци€ карт	ProductDesign
+
+4048	PostBank_v1	инкассаци€(карты)	CardType	
+4062	PostBank_v1	инкассаци€(карты)	CASE_BOX	
+4068	PostBank_v1	инкассаци€(карты)	CASE_COVER	
+4070	PostBank_v1	инкассаци€(карты)	CASE_ENVELOPE	
+4066	PostBank_v1	инкассаци€(карты)	CASE_LEAFLET	
+4064	PostBank_v1	инкассаци€(карты)	CASE_PACKAGE	
+3779	PostBank_v1	инкассаци€(карты)	CLIENTID	
+3780	PostBank_v1	инкассаци€(карты)	DeliveryType	
+3781	PostBank_v1	инкассаци€(карты)	DUMPBANK_FLAG	
+4060	PostBank_v1	инкассаци€(карты)	PackageType	
+3783	PostBank_v1	инкассаци€(карты)	PAY_SYSTEM	
+3782	PostBank_v1	инкассаци€(карты)	PCode	
+3784	PostBank_v1	инкассаци€(карты)	PlasticType	
+4056	PostBank_v1	инкассаци€(карты)	ProductDesign
+
+3785	PostBank_v1	генераци€ банковских чиповых данных	CLIENTID	
+3787	PostBank_v1	генераци€ банковских чиповых данных	DUMPBANK_FLAG	1
+3789	PostBank_v1	генераци€ банковских чиповых данных	PAY_SYSTEM	
+3788	PostBank_v1	генераци€ банковских чиповых данных	PCode	
+4054	PostBank_v1	генераци€ банковских чиповых данных	ProductDesign
