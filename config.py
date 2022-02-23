@@ -60,7 +60,7 @@ smtphost1 = {
 smtphost2 = {
     'host'         : 'smtp-mail.outlook.com', 
     'port'         : 587,
-    'connect'      : {'login' : "support@company.ru", 'password' : "947326"},
+    'connect'      : {'login' : "support@company.ru", 'password' : "********"},
     'tls'          : 1,
     'method'       : 2,
     'from'         : 'support@company.ru',
