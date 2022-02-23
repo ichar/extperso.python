@@ -28,13 +28,13 @@ reload             :: 1
 # -------------------
 # PostBank merge interval
 postbank_merge     :: 20:00-23:15
-# Каталог выгрузки документов по отправлениям Почта России
+#
 postbank_unload_to :: C:/PersoStation/Inkass/InputData/PostBank/postonline
-# Почта России F103
+#
 pochta_mail_to     :: webdev@rosan.ru
-# ПОЧТАБАНК отгрузка
+#
 postbank_mail_to   :: webdev@rosan.ru
-# Накладные Розан
+#
 delivery_mail_to   :: webdev@rosan.ru
-# Время активации отгрузки
+#
 postbank_active    :: 03:00-21:30
