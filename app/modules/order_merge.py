@@ -76,6 +76,7 @@ class BaseProcess(AbstractMergeClass):
             Arguments:
                 n         -- Int, record number
                 data      -- bytes, line incoming data (XML)
+                parent    -- Object, parent class
 
             Keyword arguments:
                 encoding  -- String, data encoding type
@@ -123,6 +124,8 @@ class BaseProcess(AbstractMergeClass):
 
         except ProcessException as ex:
             is_error = True
+
+            self.set_exception(ex)
 
             self._logger('[%s] %s. %s' % (self.class_info(), ex.__class__.__name__, ex), is_error=is_error)
 

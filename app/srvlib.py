@@ -76,11 +76,38 @@ def SRV_GetSeen(source):
             index = int(s[1]) + 1
 
         fo.seek(p, 0)
-        fo.write('%s:%d' % (today, index))
+        fo.write('%s:%03d' % (today, index))
 
     return index
 
 getSeen = SRV_GetSeen
+
+def SRV_ResumeSeen(source, check_index):
+    if not source:
+        return
+
+    if not (os.path.exists(source) and os.path.isfile(source)):
+        fo = open(source, 'w')
+        fo.close()
+
+    today = getDate(getToday(), DATE_STAMP)
+    index = 1
+    p = 0
+
+    with open(source, 'r+') as fo:
+        line = fo.read()
+        s = line and line.strip().split(':') or None
+
+        if not (s and len(s) == 2 and s[0] == today and s[1].isdigit()):
+            pass
+        else:
+            index = int(s[1]) - 1
+
+        if check_index == index:
+            fo.seek(p, 0)
+            fo.write('%s:%03d' % (today, index))
+
+resumeSeen = SRV_ResumeSeen
 
 def SRV_Outgoing(logger, saveback, is_error, **kw):
     """
@@ -118,7 +145,7 @@ def SRV_Outgoing(logger, saveback, is_error, **kw):
                 srvWrite(fo, '%s: %s' % (id, ','.join([get_error_code(keys, key, code) for key, code in errors])), **params)
         elif kw.get('with_full_reject'):
             srvWrite(fo, filename, **params)
-            srvWrite(fo, '00', **params)
+            srvWrite(fo, kw.get('error_code') or '00', **params)
     elif kw.get('empty_file'):
         pass
     else:

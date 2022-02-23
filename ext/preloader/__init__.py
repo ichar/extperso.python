@@ -6,8 +6,6 @@
 
 from ..defaults import *
 
-from . import otkrytie
-
 """
     Методы (атрибуты) базового класса:
 """

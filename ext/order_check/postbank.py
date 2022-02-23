@@ -145,6 +145,8 @@ def check_data(n, node, logger, saveback, **kw):
     recno = getTag(node, 'FileRecNo')
     # ID карты Банка
     id = getTag(node, LOCAL_ID_TAG)
+    # Тип файла
+    filetype = order.filetype
     # Код филиала доставки карт
     code = getTag(node, 'BRANCHDELIVERY')
     # Код сопоставления записи справочника
@@ -208,6 +210,11 @@ def check_data(n, node, logger, saveback, **kw):
     if product_design not in orderfile:
         _add_error(n, node, id, ('ProductDesign', 'Not matched with filename',), errors, saveback)
 
+    BIN = local_GetPlasticInfo(product_design, filetype=filetype, key='BIN')
+
+    if BIN and not PAN.startswith(BIN):
+        _add_error(n, node, id, ('PAN', 'Not matched with BIN',), errors, saveback)
+
     if is_addr_delivery:
         for key in ('CardholderFIO', 'CardholderAddress'):
             if not getTag(node, key):
@@ -262,7 +269,7 @@ def check_data(n, node, logger, saveback, **kw):
                 # Статус ожидания файла-реестра лояльности (нет свободных номеров)
                 #
                 order._status_error = STATUS_ON_SUSPENDED
-                msg = 'Loaylty Register: %s No free loaylty numbers, PAN:%s recno:%s' % (filename, pan_masked, recno)
+                msg = 'Loaylty Register: No free loaylty numbers, PAN:%s recno:%s' % (pan_masked, recno)
                 raise CustomException(msg, recipients=ERROR_RECIPIENTS)
 
             loyalty_number, ean = cursor[0][1:]
@@ -280,10 +287,22 @@ def check_data(n, node, logger, saveback, **kw):
             raise
 
         except:
-            msg = 'Loaylty Register: %s Unexpected error, TID:%s, LoyaltyNumber:%s, PAN:%s recno:%s' % (
-                filename, TID, loyalty_number, pan_masked, recno)
+            msg = 'Loaylty Register: Unexpected error, TID:%s, LoyaltyNumber:%s, PAN:%s recno:%s' % (
+                TID, loyalty_number, pan_masked, recno)
             print_to(None, 'ERROR:'+repr(cursor))
             raise ProcessException(msg)
+
+    return HANDLER_CODE_UNDEFINED
+
+def dummy(n, node, logger, saveback, **kw):
+    pass
+
+def check(n, node, logger, saveback, **kw):
+    """
+        Контроль данных входящего персофайла (повтор квитанции)
+    """
+    if node.tag != 'FileBody_Record':
+        return
 
     return HANDLER_CODE_UNDEFINED
 

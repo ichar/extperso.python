@@ -9,7 +9,6 @@ from app.types.statuses import *
 
 from ..defaults import *
 
-from . import otkrytie
 from . import postbank
 
 """
@@ -40,25 +39,6 @@ from . import postbank
 # ----------------------------------------------- #
 
 scenario = [
-    # -------------
-    # ¡¿Õ  Œ“ –€“»≈
-    # -------------
-    #(0, 'Otkrytie_v1',  
-    #    [STATUS_CREATED, STATUS_PARAMETERS_CHECKED, STATUS_REJECTED_INVALID],
-    #    {
-    #        'auto'     : ACTION_ORDER_CHECK_PARAMETERS, 
-    #        'custom'   : otkrytie.check_parameters, 
-    #        'outgoing' : otkrytie.outgoing,
-    #    },
-    #),
-    #(0, 'Otkrytie_v1',  
-    #    [STATUS_PARAMETERS_CHECKED, STATUS_DATA_CHECKED, STATUS_REJECTED_ERROR],
-    #    {
-    #        'auto'     : ACTION_ORDER_CHECK_DATA,
-    #        'custom'   : otkrytie.check_data,
-    #        'outgoing' : otkrytie.outgoing,
-    #    },
-    #),
     # ----------
     # œŒ◊“¿ ¡¿Õ 
     # ----------
@@ -128,4 +108,39 @@ scenario = [
             'autocommit' : 0,
         },
     ),
+    (0, 'PostBank_CL',  
+        [STATUS_CREATED, STATUS_PARAMETERS_CHECKED, STATUS_REJECTED_INVALID],
+        {
+            'auto'     : ACTION_ORDER_CHECK_PARAMETERS, 
+            'custom'   : postbank.check_parameters, 
+            'outgoing' : postbank.outgoing,
+        },
+    ),
+    (0, 'PostBank_CL',  
+        [STATUS_PARAMETERS_CHECKED, STATUS_DATA_CHECKED, postbank.status_error_to],
+        {
+            'auto'     : ACTION_ORDER_CHECK_DATA,
+            'custom'   : postbank.check_data,
+            'outgoing' : postbank.outgoing,
+
+            'autocommit' : 0,
+        },
+    ),
+    # ------------
+    # Œ·ÒÎÛÊË‚‡ÌËÂ
+    # ------------
+    """
+    (0, 'PostBank_v1',
+        [199, 0,],
+        {
+            'auto'     : ACTION_ORDER_CHECK_DATA,
+            'custom'   : postbank.dummy,
+            'outgoing' : postbank.outgoing,
+
+            'forced'   : 218302,
+
+            'change_status' : 0,
+        },
+    ),
+    """
 ]

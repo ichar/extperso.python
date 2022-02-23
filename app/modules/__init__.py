@@ -28,7 +28,7 @@ from .order_merge import BaseProcess as OrderMerge
 from .order_report import BaseProcess as OrderReport
 from .unloader import BaseProcess as Unloader
 
-from ext import global_scenario, filetypes_modules, ext_modules
+from ext import global_scenario, filetypes_modules, ext_modules, command_scenario
 from ext.defaults import *
 from ext.filetypes import *
 from ext.filetypes import registered_order_filetypes
@@ -143,13 +143,15 @@ def changeStatus(code, order, status_to, status_error, change_status=False, keep
     if code is None:
         pass
 
-    elif code == HANDLER_CODE_SUCCESS and change_status and status_to is not None:
-        status = callable(status_to) and status_to(order) or status_to
-        error = mod_change_status(order.id, status, status, keep_history=keep_history)
+    elif code == HANDLER_CODE_SUCCESS and change_status:
+        if status_to is not None:
+            status = callable(status_to) and status_to(order) or status_to
+            error = mod_change_status(order.id, status, status, keep_history=keep_history)
 
-    elif code == HANDLER_CODE_ERROR and change_status and status_error is not None:
-        status = callable(status_error) and status_error(order) or status_error
-        error = mod_change_status(order.id, status, status, keep_history=True)
+    elif code == HANDLER_CODE_ERROR and change_status:
+        if status_error is not None:
+            status = callable(status_error) and status_error(order) or status_error
+            error = mod_change_status(order.id, status, status, keep_history=True)
 
     return status, error
 
@@ -397,12 +399,19 @@ def command_parser(line):
     if not line:
         return None
 
+    scenario = []
+
     mid, item = '', []
 
     items = line.split('::')
 
     if len(items) != 4:
         return None
+
+    def _add(command, mid, item):
+        scenario.append((mid, item,))
+
+        logger('--> command:%s[%s], item: %s' % (command, mid, item))
 
     command, filetype, statuses, attrs = items
     
@@ -414,6 +423,31 @@ def command_parser(line):
     #
     if not attrs:
         command = None
+    
+    elif command == 'RUR':
+        #
+        #   Command: RepeatUnloadedReport.
+        #
+        #       id: command_scenario ID
+        #
+        #   debug mode:  
+        #       RUR::PostBank_v1::198-0-0::['postbank_report',218288]
+        #
+        id, forced = attrs
+
+        statuses = [int(x) for x in statuses]
+
+        for mid, attrs, params in command_scenario.get(id) or []:
+            if mid and attrs:
+                attrs = eval(attrs)
+                attrs.update({
+                    'params': params,
+                    'forced': forced,
+                })
+            else:
+                continue
+
+            _add(command, mid, [service('ID'), filetype, statuses, attrs])
     
     elif command == 'CSD':
         #
@@ -433,6 +467,7 @@ def command_parser(line):
                 'custom': custom,
                 'params': {'date':date},
                 'forced': forced,
+                'phases': 2,
             }
 
         if not callable(attrs['custom']) or not isinstance(attrs.get('params'), dict) or not attrs.get('forced'):
@@ -442,6 +477,8 @@ def command_parser(line):
             attrs['params']['auto'] = 1
             attrs['change_status'] = 0
             attrs['forced'] = int(attrs['forced'])
+
+        _add(command, mid, [service('ID'), filetype, statuses, attrs])
     
     elif command == 'CDA':
         #
@@ -470,11 +507,9 @@ def command_parser(line):
             attrs['change_status'] = 0
             attrs['forced'] = int(attrs['forced'])
 
-    item = [service('ID'), filetype, statuses, attrs]
+        _add(command, mid, [service('ID'), filetype, statuses, attrs])
 
-    logger('--> command:%s[%s], item: %s' % (command, mid, item))
-
-    return (mid, item,)
+    return scenario
 
 
 @before(_database)
@@ -539,7 +574,7 @@ def process(**kw):
         command = command_parser(kw['command'])
 
         if command:
-            scenario.append(command)
+            scenario += command
     
         with_error = True
     
@@ -627,13 +662,13 @@ def process_preloader(mid, filetype, attrs):
                 done = run_preloader(ob, filetype)
 
                 set_message(mid, '%s%s[%s]: %s, total produced %s records, code: %s. Preloader was%sdone.' % ( 
-                    PROCESS_LOGGER_PREFIX, 
-                    mid, 
-                    func_name(attrs.get('custom'), 'preloader'), 
-                    ob.in_processing(), 
-                    ob.total, 
-                    ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors', 
-                    not done and ' not ' or ' ', 
+                        PROCESS_LOGGER_PREFIX, 
+                        mid, 
+                        func_name(attrs.get('custom'), 'preloader'), 
+                        ob.in_processing(), 
+                        ob.total, 
+                        ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors', 
+                        not done and ' not ' or ' ', 
                     ),
                     True)
 
@@ -704,14 +739,14 @@ def process_exists(mid, filetype, status_ids, attrs):
 
                 if done:
                     set_message(mid, '%s%s[%s]: %s, total produced %s records, code: %s. Status was%schanged to [%s].' % ( 
-                        PROCESS_LOGGER_PREFIX, 
-                        mid, 
-                        func_name(attrs.get('custom')), 
-                        order.filename, 
-                        ob.total, 
-                        ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors',
-                        not (change_status and status and not error) and ' not ' or ' ',
-                        status,
+                            PROCESS_LOGGER_PREFIX, 
+                            mid, 
+                            func_name(attrs.get('custom')), 
+                            order.filename, 
+                            ob.total, 
+                            ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors',
+                            not (change_status and status and not error) and ' not ' or ' ',
+                            status,
                         ), 
                         True)
 
@@ -748,14 +783,14 @@ def process_incoming(mid, filetype, status_ids, attrs):
                     done = order.id and True or False
 
                     set_message(mid, '%s%s[%s]: %s, total produced %s records, code: %s. A new file order was%sgenerated%s.' % ( 
-                        PROCESS_LOGGER_PREFIX, 
-                        mid, 
-                        func_name(attrs.get('custom'), 'incoming'), 
-                        order.filename, 
-                        ob.total, 
-                        ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors', 
-                        not done and ' not ' or ' ', 
-                        done and (', FileID: %s' % order.id) or '', 
+                            PROCESS_LOGGER_PREFIX, 
+                            mid, 
+                            func_name(attrs.get('custom'), 'incoming'), 
+                            order.filename, 
+                            ob.total, 
+                            ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors', 
+                            not done and ' not ' or ' ', 
+                            done and (', FileID: %s' % order.id) or '', 
                         ),
                         True)
 
@@ -791,13 +826,13 @@ def process_reference(mid, filetype, attrs):
                 done = ob.total > 0 and ob.code == HANDLER_CODE_SUCCESS and True or False
 
                 set_message(mid, '%s%s[%s]: %s, total produced %s records, code: %s. A new reference was%sreceived.' % ( 
-                    PROCESS_LOGGER_PREFIX, 
-                    mid, 
-                    func_name(attrs.get('custom'), 'reference'), 
-                    ob.in_processing(), 
-                    ob.total, 
-                    ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors', 
-                    not done and ' not ' or ' ', 
+                        PROCESS_LOGGER_PREFIX, 
+                        mid, 
+                        func_name(attrs.get('custom'), 'reference'), 
+                        ob.in_processing(), 
+                        ob.total, 
+                        ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors', 
+                        not done and ' not ' or ' ', 
                     ),
                     True)
 
@@ -841,13 +876,13 @@ def process_merge(mid, filetype, status_ids, attrs):
                     status, error = order.status_id, ob.code == HANDLER_CODE_ERROR
 
                 set_message(mid, '%s%s[%s]: %s, total produced %s records, code: %s. Order was created with status [%s].' % ( 
-                    PROCESS_LOGGER_PREFIX, 
-                    mid, 
-                    func_name(attrs.get('custom')), 
-                    order.filename, 
-                    order.fqty, 
-                    ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors',
-                    status,
+                        PROCESS_LOGGER_PREFIX, 
+                        mid, 
+                        func_name(attrs.get('custom')), 
+                        order.filename, 
+                        order.fqty, 
+                        ob.code == HANDLER_CODE_SUCCESS and 'successfully' or 'with errors',
+                        status,
                     ), 
                     True)
 
@@ -1042,4 +1077,4 @@ def run_actions(ob):
         if not done:
             continue
 
-        logger('%saction[%s]: %s, data:%s' % (info and '%s ' % info, module, command, repr(data)), force=True)
+        logger('%saction[%s]: %s, data:%s' % (info and ('%s ' % info.strip()) or '', module, command, repr(data)), force=True)

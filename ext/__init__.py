@@ -27,12 +27,12 @@
 # ----------------------------------------------
 
 global_scenario = [
-    'preloader',
-    'loader',
-    'unloader',
-    'order_check',
+    #'preloader',
+    #'loader',
+    #'unloader',
+    #'order_check',
     'order_generate',
-    'order_merge',
+    #'order_merge',
     'order_report',
 ]
 
@@ -41,7 +41,6 @@ global_scenario = [
 # -------------------------------
 
 filetypes_modules = [
-    'otkrytie',
     'postbank',
 ]
 
@@ -50,13 +49,24 @@ filetypes_modules = [
 # -----------------------------------------
 
 ext_modules = {
-    'preloader'      : ['otkrytie'],
-    'loader'         : ['postbank', 'otkrytie'],
-    'order_check'    : ['postbank', 'otkrytie'],
-    'order_generate' : ['postbank', 'otkrytie', 'raund_megafon',],
+    'preloader'      : [],
+    'loader'         : ['postbank'],
+    'order_check'    : ['postbank'],
+    'order_generate' : ['postbank'],
     'order_merge'    : ['postbank'],
     'order_report'   : ['postbank'],
     'unloader'       : ['postbank'],
+}
+
+# --------------------------------------
+#   Сценарии командного интерпретатора
+# --------------------------------------
+
+command_scenario = {
+    'postbank_report' : [
+        ('unloader', "ext.unloader.command_scenario['postbank']", {'report_name' : 'CRDSRT', 'is_report_today' : 0}), 
+        ('order_report', "ext.order_report.command_scenario['postbank']", {'report_name' : 'POST 1 CLASS', 'is_report_today' : 0}),
+    ],
 }
 
 # ------------------------------------------------
@@ -70,7 +80,19 @@ calendar = (
     '20200101', '20200102', '20200103', '20200104', '20200105', '20200106', '20200107', '20200108', '20200109', '20200110', '20200111', '20200112', 
     '20200224', 
     '20200309', 
-    '20200501', '20200502', '20200503', 
+    '20200501', '20200504', '20200505', '20200511', 
     '20200612', 
     '20201104', 
+    '20210101', '20210104', '20210105', '20210106', '20210107', '20210108', 
+    '20210222', '20210223', 
+    '20210308', 
+    '20210503', '20210510', 
+    '20210614', 
+    '20211104', '20211105', 
+    '20211231', 
+)
+
+suspended_dates = (
+    ('20210201', ('P', 'E'), ('C1',)), 
+    ('20210708', ('P', 'E'), ('C1',)), 
 )

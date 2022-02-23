@@ -39,13 +39,17 @@ class BaseProcess(AbstractOrderClass):
             Arguments:
                 n         -- Int, record number
                 data      -- bytes, line incoming data (XML)
+                parent    -- Object, parent class
 
             Keyword arguments:
                 encoding  -- String, data encoding type
                 option    -- String, decoder option {ignore|...}
 
             Class attributes:
+                _order    -- Order, order instance
                 _logger   -- Func, logger function
+                _saveback -- Dict, customr's saveback area
+                _connect  -- Func, database operational method
 
             Returns:
                 output[value]: bytes encoded with the given `encoding`.
@@ -95,7 +99,9 @@ class BaseProcess(AbstractOrderClass):
         except ProcessException as ex:
             is_error = True
 
-            self._logger('[%s] %s. %s' % (self.class_info(), ex.__class__.__name__, ex), is_error=is_error)
+            self.set_exception(ex)
+
+            self._logger('[%s] %s: %s %s' % (self.class_info(), ex.__class__.__name__, self.order.filename, ex), is_error=is_error)
 
             if IsPrintExceptions:
                 print_exception(1)

@@ -109,7 +109,10 @@ class BaseProcess(AbstractOrderClass):
 
         except ProcessException as ex:
             is_error = True
-            self._logger('[%s] %s. %s' % (self.class_info(), ex.__class__.__name__, ex), is_error=is_error)
+
+            self.set_exception(ex)
+
+            self._logger('[%s] %s: %s %s' % (self.class_info(), ex.__class__.__name__, self.order.filename, ex), is_error=is_error)
 
             if IsPrintExceptions:
                 print_exception(1)

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# -*- coding: utf-8 -*-
 
 import os
 import sys, codecs
@@ -34,21 +33,30 @@ default_view = 'orders'
 
 _SQL = {
     'OrderFilesBody' : {
-        'get_body'    : 'SELECT TID, IBody FROM [BankDB].[dbo].[OrderFilesBody_tb] WHERE FileID=%d and FileStatusID=%d',
-        'seek_body'   : 'SELECT TOP 1 TID, IBody FROM [BankDB].[dbo].[OrderFilesBody_tb] WHERE FileID=%d ORDER BY TID DESC',
-        'add_body'    : 'INSERT INTO [BankDB].[dbo].[OrderFilesBody_tb] VALUES(%d, NULL, %s, %d, %s)',
-        'update_body' : 'UPDATE [BankDB].[dbo].[OrderFilesBody_tb] SET IBody=%s WHERE TID=%d',
+        'get_body'     : 'SELECT TID, IBody FROM [BankDB].[dbo].[OrderFilesBody_tb] WHERE FileID=%d and FileStatusID=%d',
+        'get_body2'    : [
+                         'DELETE FROM [BankDB].[dbo].[OrderFilesBody_tb] WHERE FileID=%d and FileStatusID=%d',
+                         'SELECT TID, IBody FROM [BankDB].[dbo].[OrderFilesBody_tb] WHERE FileID=%d and FileStatusID=%d',
+                         ],
+        'seek_body'    : 'SELECT TOP 1 TID, IBody FROM [BankDB].[dbo].[OrderFilesBody_tb] WHERE FileID=%d ORDER BY TID DESC',
+        'add_body'     : 'INSERT INTO [BankDB].[dbo].[OrderFilesBody_tb] VALUES(%d, NULL, %s, %d, %s)',
+        'update_body'  : 'UPDATE [BankDB].[dbo].[OrderFilesBody_tb] SET IBody=%s WHERE TID=%d',
+        'update_body2' : [
+                         'UPDATE [BankDB].[dbo].[OrderFilesBody_tb] SET IBody=%s WHERE TID=%d',
+                         'EXEC [BankDB].[dbo].[WEB_ChangeOrderState_sp]',
+                         ],
     },
     'OrderFiles' : {
-        'check'       : 'SELECT 1 FROM [BankDB].[dbo].[OrderFiles_tb] WHERE FName=%s',
-        'add'         : 'INSERT INTO [BankDB].[dbo].[OrderFiles_tb] VALUES(%d, %s, %d, %d, %s, %s, %d, %s, NULL)',
-        'ready'       : 'UPDATE [BankDB].[dbo].[OrderFiles_tb] SET ReadyDate=%s WHERE TID=%d',
+        'check'        : 'SELECT 1 FROM [BankDB].[dbo].[OrderFiles_tb] WHERE FName=%s',
+        'add'          : 'INSERT INTO [BankDB].[dbo].[OrderFiles_tb] VALUES(%d, %s, %d, %d, %s, %s, %d, %s, NULL)',
+        'ready'        : 'UPDATE [BankDB].[dbo].[OrderFiles_tb] SET ReadyDate=%s WHERE TID=%d',
+        'total'        : 'UPDATE [BankDB].[dbo].[OrderFiles_tb] SET FQty=%s WHERE TID=%d',
     },
     'OrderFilesBodyImage' : {
-        'add'         : 'INSERT INTO [BankDB].[dbo].[OrderFilesBodyImage_tb] VALUES(%d, %s, NULL)'
+        'add'          : 'INSERT INTO [BankDB].[dbo].[OrderFilesBodyImage_tb] VALUES(%d, %s, NULL)'
     },
     'DIC_FileType' : {
-        'filetype'    : 'SELECT TID FROM [BankDB].[dbo].[DIC_FileType_tb] WHERE CName=%s',
+        'filetype'     : 'SELECT TID FROM [BankDB].[dbo].[DIC_FileType_tb] WHERE CName=%s',
     },
 }
 
@@ -61,14 +69,20 @@ BOMLEN = len(codecs.BOM_UTF8)
 
 class ProcessException(Exception):
 
-    def __init__(self, message, errors=None):
+    def __init__(self, message, errors=None, status=None):
         super().__init__(message)
+
+        self._status = status
+
+    @property
+    def status(self):
+        return self._status
 
 
 class CustomException(ProcessException):
 
-    def __init__(self, message, errors=None, recipients=None):
-        super().__init__(message, errors)
+    def __init__(self, message, errors=None, recipients=None, status=None):
+        super().__init__(message, errors=errors, status=status)
 
         self._recipients = recipients
 
@@ -269,10 +283,13 @@ class Base:
         self._checker = None
         self._filename = ''
 
+        self._exception = None
+
         self._location = None
         self._original = ''
         self._code = HANDLER_CODE_UNDEFINED
         self._total = 0
+        self._empty_nodes = 0
         self._tmp_folder = ''
         self._tmp = '%s'
 
@@ -311,6 +328,14 @@ class Base:
     def class_info(self):
         return self.__class__.__bases__[0].__name__
 
+    def set_exception(self, exception):
+        self._exception = exception
+
+        if self._exception is not None and hasattr(self._exception, 'status'):
+            status = self._exception.status
+            if self._order is not None:
+                self._order.status_error = status
+
     def stdout(self):
         return self._saveback and self._saveback.get('stdout') or None
 
@@ -344,6 +369,9 @@ class Base:
         # ***
         ##open(comp, 'wb').write(zlib.compress(open(gen, 'rb').read()))
         Base.file_setter(comp, zlib.compress(Base.file_getter(gen)))
+
+    def reset(self):
+        self._code = HANDLER_CODE_UNDEFINED
 
     @property
     def actions(self):
@@ -439,6 +467,10 @@ class Base:
     @filename.setter
     def filename(self, value):
         self._filename = value
+
+    @property
+    def order(self):
+        return self._order
 
     @property
     def total(self):
@@ -667,6 +699,7 @@ class Base:
                 total=self.total,
                 params=self._params,
                 engine=self._engine,
+                parent=self,
             )
 
         return code
@@ -688,7 +721,9 @@ class Base:
             service=self.service,
             tmp=self.tmp_folder,
             total=self.total,
+            params=self._params,
             engine=self._engine,
+            error_code=kw.get('error_code'),
         )
 
 
@@ -711,6 +746,8 @@ class Connection(Base):
         self.TID = None
 
     def reset(self):
+        super().reset()
+
         self.is_error = False
 
         if not hasattr(self, 'cursor'):
@@ -752,8 +789,10 @@ class Connection(Base):
             Parameterized query.
 
             Arguments:
-                sql     -- String, SQL query with params scheme
-                params  -- List, query parameters
+                sql     -- String or List, SQL query command string or list with params scheme:
+                    ['command1', 'command2' ...]
+                params  -- Tuples or List of Tuples, query parameters for every command: 
+                    [(params for command1), (params for command2) ... ]
 
             Keyword arguments:
                 with_commit -- Boolean, use transaction or not
@@ -800,6 +839,13 @@ class Connection(Base):
         try:
             if _callproc:
                 res = cursor.callproc(sql, params)
+            elif isinstance(sql, list) and len(sql) == len(params):
+                for n, s in enumerate(sql):
+                    if s and len(params) > n:
+                        if s.lower().startswith('exec'):
+                            res = cursor.callproc(s.split(' ')[1], params[n])
+                        else:
+                            cursor.execute(s, params[n])
             else:
                 cursor.execute(sql, params)
         except:
@@ -866,44 +912,78 @@ class Connection(Base):
         return x and len(x) > 0 and x[0][0] or None
 
     def checkFileExists(self, filename):
+        """
+            Check existance of order by filename: 1 command in a query
+        """
         cursor, is_error = self.connect(_SQL['OrderFiles']['check'], (
                 filename, 
             ),
             with_result=True
         )
-        return not is_error and self.get_body(cursor) and True or False
 
-    def getBody(self, id, status, **kw):
-        def _get_body(x):
+        is_exist = not is_error and self.get_body(cursor) and True or False
+
+        if IsDebug:
+            print_to(None, 'OrderFiles.check: %s, is_exist:%s, is_error:%s' % (
+                filename, is_exist, is_error))
+
+        return is_exist
+
+    def getBody(self, file_id, status_from, **kw):
+        """
+            Delete XML body in `status_to` and Get body of file: 2 commands in a query
+        """
+        def _get_body(cursor, is_error):
             body = None
-            cursor, is_error = x
             data = not is_error and self.get_data(cursor)
 
             if data is not None and len(data) == 2:
                 self.TID, body = data
             return body
 
-        body = _get_body(self.connect(_SQL['OrderFilesBody']['get_body'], (
-                id, 
-                status,
-            ),
-            with_result=True
-        ))
+        status_to = kw.get('status_to') or 0
 
+        body, cursor, is_error, mode, params = None, None, False, '', None
+
+        if status_to and status_to != status_from:
+            mode = 'get_body2'
+            params = [(file_id, status_to,), (file_id, status_from,)]
+        else:
+            mode = 'get_body'
+            params = (file_id, status_from,)
+
+        cursor, is_error = self.connect(_SQL['OrderFilesBody'][mode], 
+            params,
+            with_result=True
+        )
+        body = _get_body(cursor, is_error)
+
+        if IsDebug:
+            print_to(None, 'OrderFilesBody.%s: %s %s %s, size:%s, is_error:%s' % (
+                mode, file_id, status_from, status_to, body and len(body), is_error))
+    
         if body is not None:
             return body
 
-        body = _get_body(self.connect(_SQL['OrderFilesBody']['seek_body'], (
-                id, 
+        cursor, is_error = self.connect(_SQL['OrderFilesBody']['seek_body'], (
+                file_id, 
             ),
             with_result=True
-        ))
+        )
+        body = _get_body(cursor, is_error)
+
+        if IsDebug:
+            print_to(None, 'OrderFilesBody.seek_body: %s %s %s, size:%s, is_error:%s' % (
+                file_id, status_from, status_to, body and len(body), is_error))
 
         return body
 
-    def setBody(self, id, status, with_commit=False):
+    def setBody(self, file_id, status, with_commit=False):
+        """
+            Add a new XML file body: 1 command in a query
+        """
         cursor, is_error = self.connect(_SQL['OrderFilesBody']['add_body'], (
-                id, 
+                file_id, 
                 getDate(getToday()), 
                 status, 
                 open(self.tmp_comp, 'rb').read(),
@@ -914,33 +994,100 @@ class Connection(Base):
 
         self.TID = lastrowid
 
+        if IsDebug:
+            print_to(None, 'OrderFilesBody.add_body: %s %s, TID:%s, is_error:%s' % (
+                file_id, status, self.TID, is_error))
+
         return lastrowid
 
-    def updateBody(self, with_commit=False):
-        cursor, is_error = self.connect(_SQL['OrderFilesBody']['update_body'], (
-                open(self.tmp_comp, 'rb').read(),
-                self.TID, 
-            ), 
+    def updateBody(self, file_id, status_to, with_commit=False):
+        """
+            Update XML body and change status of file: 2 commands in a query
+        """
+        cursor, is_error, mode, params = None, False, '', None
+
+        body = open(self.tmp_comp, 'rb').read()
+
+        if status_to:
+            mode = 'update_body2'
+            params = [(body, self.TID,), (
+                None,       # client
+                None,       # register_date
+                0,          # info
+                file_id,    # FileID
+                status_to,  # check_file_status
+                status_to,  # new_file_status
+                None,       # BatchID
+                None,       # batch_type_id
+                None,       # new_batch_status
+                1,          # run_file
+                0,          # run_batch
+                0,          # run_kill_cards
+                0,          # run_kill_bankdb
+                1,          # keep_history
+            )]
+        else:
+            mode = 'update_body'
+            params = (body, self.TID,)
+
+        cursor, is_error = self.connect(_SQL['OrderFilesBody'][mode], 
+            params,
             with_commit=with_commit
         )
+
+        if IsDebug:
+            print_to(None, 'OrderFilesBody.%s: %s %s, TID:%s, size:%s, is_error:%s' % (
+                mode, file_id, status_to, self.TID, body and len(body), is_error))
 
         if is_error:
             self.TID = None
 
+        del body
+
     def updateReadyDate(self, attrs, with_commit=False):
+        """
+            Update `ReadyDate` for order: 1 command in a query
+        """
         ready_date = attrs['ReadyDate']
-        tid = attrs['TID']
+        file_id = attrs['TID']
 
         cursor, is_error = self.connect(_SQL['OrderFiles']['ready'], (
                 ready_date, 
-                tid, 
+                file_id, 
             ),
             with_commit=with_commit
         )
-        
+
+        if IsDebug:
+            print_to(None, 'OrderFiles.ready: %s, ReadyDate:%s, is_error:%s' % (
+                file_id, ready_date, is_error))
+
+        return is_error
+
+    def updateTotal(self, attrs, with_commit=False):
+        """
+            Update `Total` for order: 1 command in a query
+        """
+        total = attrs['Total']
+        file_id = attrs['TID']
+
+        cursor, is_error = self.connect(_SQL['OrderFiles']['total'], (
+                total, 
+                file_id, 
+            ),
+            with_commit=with_commit
+        )
+
+        if IsDebug:
+            print_to(None, 'OrderFiles.total: %s, Total:%s, is_error:%s' % (
+                file_id, total, is_error))
+
         return is_error
 
     def addNewOrder(self, attrs, no_image=False, with_commit=False):
+        """
+            Add a new order: 3 queries
+        """
         fname = attrs['FName']
         filetype = attrs['FileType']
         fqty = attrs['FQty']
@@ -990,6 +1137,10 @@ class Connection(Base):
             with_commit=with_commit
         )
         lastrowid = not is_error and cursor.lastrowid or None
+
+        if IsDebug:
+            print_to(None, 'OrderFilesBodyImage.add: %s, Image size:%s, is_error:%s' % (
+                file_id, image and len(image), is_error))
 
 
 class AbstractOrderClass(Connection, Base):
@@ -1070,14 +1221,13 @@ class AbstractOrderClass(Connection, Base):
 
         self._code = HANDLER_CODE_UNDEFINED
 
-    @property
-    def order(self):
-        return self._order
-
     def reset(self):
         super().reset()
+
         # Load order from the next state with phase more 0
         self._order.reset()
+        # Reset empty nodes count
+        self._empty_nodes = 0
 
     def auto_preload(self, node):
         if IsDeepDebug and IsTrace:
@@ -1124,12 +1274,13 @@ class AbstractOrderClass(Connection, Base):
         self.open(self._autocommit)
 
         id = self._order.id
-        status = self._order.status_from
+        status_from = self._order.status_from
+        status_to = self._order.status_to
 
-        body = self.getBody(id, status)
+        body = self.getBody(id, status_from, status_to=status_to)
 
         if body is None:
-            self._logger('>>> No body: %s %s' % (id, status), is_error=True)
+            self._logger('>>> No body: %s %s %s' % (id, status_from, status_to), is_error=True)
             self.code = HANDLER_CODE_ERROR
             return
 
@@ -1154,7 +1305,7 @@ class AbstractOrderClass(Connection, Base):
             if self.phase == 0 and status:
                 lastrowid = self.setBody(self._order.id, status, with_commit=True)
             else:
-                self.updateBody(with_commit=True)
+                self.updateBody(self._order.id, status, with_commit=True)
                 lastrowid = self.TID
 
             if lastrowid:
@@ -1190,7 +1341,7 @@ class AbstractOrderClass(Connection, Base):
 
         self.total = n
 
-        self._logger('--> Total records:%s' % n, True)
+        self._logger('--> Total records:%s, empty:%s' % (n, self._empty_nodes), True)
 
     def setOrder(self, order):
         self._order = order
@@ -1205,6 +1356,13 @@ class AbstractOrderClass(Connection, Base):
                 'TID'       : self.order.id,
             }
             is_error = self.updateReadyDate(attrs)
+
+        if self._empty_nodes:
+            attrs = {
+                'Total'     : self.order.fqty - self._empty_nodes,
+                'TID'       : self.order.id,
+            }
+            is_error = self.updateTotal(attrs)
 
         if IsDeepDebug:
             print_to(None, '>>> %s' % self.tmp_gen)
@@ -1262,6 +1420,8 @@ class Preloader(Base):
         }
 
     def reset(self):
+        super().reset()
+
         self.is_error = False
         self._total = 0
         self._tmp = None
@@ -1412,6 +1572,7 @@ class Loader(Connection, Base):
 
     def reset(self):
         super().reset()
+
         self._forced_status = None
 
     @property
@@ -1686,9 +1847,12 @@ class Loader(Connection, Base):
             fo.close()
 
         self.total = n
-        
+
+        if self._forced_status:
+            pass
+
         # Check existance of the loading filename
-        if self.checkFileExists(filename):
+        elif self.checkFileExists(filename):
             self._forced_status = STATUS_REJECTED_DUBLICATE
         
         # Check file is empty
@@ -1705,7 +1869,11 @@ class Loader(Connection, Base):
         fieldset = self.ordered_fieldset()
         keys = list(fieldset.keys())
 
-        super().outgoing(is_error=is_error, fieldset=fieldset, keys=keys, filename=filename)
+        error_code = None
+        if self._forced_status == STATUS_REJECTED_DISABLED:
+            error_code = ERROR_OUT_OF_SERVICE
+
+        super().outgoing(is_error=is_error, fieldset=fieldset, keys=keys, filename=filename, error_code=error_code)
 
 
 class AbstractIncomingLoaderClass(Loader):
@@ -2137,9 +2305,6 @@ class AbstractMergeClass(Connection, Base):
         self._code = HANDLER_CODE_UNDEFINED
 
     @property
-    def order(self):
-        return self._order
-    @property
     def id(self):
         """
             A new Order FileID: int.
@@ -2326,15 +2491,15 @@ class AbstractMergeClass(Connection, Base):
         """
         id = self._order.id
         filename = self._order.filename
-        status = self._order.status_from
+        status_from = self._order.status_from
 
         # Temp
         self._tmp = self.mod_tmp(filename)
 
-        body = self.getBody(id, status)
+        body = self.getBody(id, status_from)
 
         if body is None:
-            self._logger('>>> No body: %s %s' % (id, status), is_error=True)
+            self._logger('>>> No body: %s %s' % (id, status_from), is_error=True)
             self.code = HANDLER_CODE_ERROR
             return
 

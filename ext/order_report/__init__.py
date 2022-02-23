@@ -10,14 +10,24 @@ from app.types.statuses import *
 
 from ..defaults import *
 
-#from . import binbank
-#from . import forbank
-#from . import minb
 from . import postbank
 
 """
     Методы (атрибуты) базового класса:
 """
+
+# -------------------------------------- #
+#   Параметры командного интерпретатора  #
+# -------------------------------------- #
+
+command_scenario = {
+    'postbank' : 
+        {
+            'custom'   : postbank.post_report, 
+            'outgoing' : postbank.outgoing,
+            'tags'     : postbank.tags, 
+        },
+}
 
 # ------------------------------------------- #
 #   FileType : Status From-To-Error : Attrs   #
@@ -105,6 +115,28 @@ scenario = [
         },
     ),
     (1, 'PostBank_X5',
+        [STATUS_READY, STATUS_FINISHED,],
+        {
+            'custom'   : postbank.post_report, 
+            'outgoing' : postbank.outgoing,
+            'tags'     : postbank.tags, 
+        },
+    ),
+    # -------------------
+    # ПОЧТА БАНК КИБЕРЛАБ
+    # -------------------
+    (1, 'PostBank_CL',
+        [STATUS_CARD_ENCASH_FINISHED, STATUS_REPORT_GEN_STARTED,],
+        {
+            'activate' : postbank.activate,
+            'custom'   : postbank.delivery_report, 
+            'outgoing' : postbank.send_mail,
+            'tags'     : postbank.tags, 
+
+            'keep_history' : 1,
+        },
+    ),
+    (1, 'PostBank_CL',
         [STATUS_READY, STATUS_FINISHED,],
         {
             'custom'   : postbank.post_report, 

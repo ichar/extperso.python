@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import locale
 import datetime
 from datetime import timedelta
 import time
@@ -467,3 +468,21 @@ def rfind(s, sub, start=0):
         if x == sub:
             return n
     return 0
+
+def sjoin(values, separator=None):
+    return (separator or '').join([str(x) for x in values])
+
+locale.setlocale(locale.LC_ALL, '')
+
+def getCurrency(value, **kw):
+    v = value and locale.currency(value, grouping=True) or None
+    if not v:
+        return ''
+    return kw.get('points') and v[:-2].replace(',', '.') or v[:-2]
+
+def getDefaultValueByKey(key, params, default_value=None):
+    if key and params and isinstance(params, dict) and key in params:
+        value = params[key]
+    else:
+        value = default_value
+    return value

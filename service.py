@@ -17,7 +17,7 @@ import win32event
 import servicemanager
 import socket
 
-sys.path.append('C:/apps/perso')
+sys.path.append('G:/apps/perso')
 
 import config
 #from config import errorlog

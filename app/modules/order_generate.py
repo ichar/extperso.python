@@ -12,6 +12,7 @@ from . import (
     )
 
 from app.core import ET, ProcessException, AbstractOrderClass
+from app.types.constants import EMPTY_NODE
 
 ## ==========================
 ## CORE: ORDER GENERATE CLASS
@@ -41,6 +42,7 @@ class BaseProcess(AbstractOrderClass):
             Arguments:
                 n         -- Int, record number
                 data      -- bytes, line incoming data (XML)
+                parent    -- Object, parent class
 
             Keyword arguments:
                 encoding  -- String, data encoding type
@@ -71,6 +73,17 @@ class BaseProcess(AbstractOrderClass):
 
         self._break = self.custom(n, node, **kw)
 
+        if self._break == -1:
+            self._logger('--> %s[record_iter]: break[%s]' % (self._mod_name, n), is_warning=True)
+
+        if self._saveback.get(EMPTY_NODE):
+            self._empty_nodes += 1
+            node = None
+
+        if not node:
+            self._logger('--> %s[record_iter]: node is empty[%s]' % (self._mod_name, n), is_warning=True)
+            return None
+
         try:
             return re.sub(r'<\?xml.*?\?>', '', ET.tostring(node, 'unicode')).encode(encoding)
         except Exception as ex:
@@ -91,7 +104,9 @@ class BaseProcess(AbstractOrderClass):
             with_body_update = False
             is_error = True
 
-            self._logger('[%s] %s. %s' % (self.class_info(), ex.__class__.__name__, ex), is_error=is_error)
+            self.set_exception(ex)
+
+            self._logger('[%s] %s: %s %s' % (self.class_info(), ex.__class__.__name__, self.order.filename, ex), is_error=is_error)
 
             if IsPrintExceptions:
                 print_exception(1)

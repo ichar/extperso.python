@@ -8,7 +8,6 @@ from app.types.statuses import *
 
 from ..defaults import *
 
-from . import otkrytie
 from . import postbank
 
 """
@@ -20,16 +19,6 @@ from . import postbank
 # ----------------------------------------------- #
 
 scenario = [
-    # -------------
-    # ¡¿Õ  Œ“ –€“»≈
-    # -------------
-    #(0, 'Otkrytie_v1', 
-    #    [STATUS_EMPTY, STATUS_CREATED, STATUS_REJECTED_INVALID], 
-    #    {
-    #        'incoming'  : otkrytie.incoming,
-    #        'validator' : otkrytie.validator,
-    #    },
-    #),
     # ----------
     # œŒ◊“¿ ¡¿Õ 
     # ----------
@@ -54,6 +43,7 @@ scenario = [
         [STATUS_EMPTY, STATUS_CREATED, STATUS_REJECTED_INVALID], 
         {
             'incoming'  : postbank.incoming,
+            'custom'    : postbank.incoming_custom, 
             'validator' : postbank.validator,
             'outgoing'  : postbank.outgoing,
         },
@@ -62,6 +52,7 @@ scenario = [
         [STATUS_EMPTY, STATUS_CREATED, STATUS_REJECTED_INVALID], 
         {
             'incoming'  : postbank.incoming_individual_design,
+            'custom'    : postbank.incoming_individual_design_custom, 
             'validator' : postbank.validator,
             'outgoing'  : postbank.outgoing,
         },
@@ -78,6 +69,14 @@ scenario = [
         [STATUS_EMPTY, STATUS_CREATED, STATUS_REJECTED_INVALID], 
         {
             'incoming'  : postbank.incoming_X5,
+            'validator' : postbank.validator,
+            'outgoing'  : postbank.outgoing,
+        },
+    ),
+    (0, 'PostBank_CL', 
+        [STATUS_EMPTY, STATUS_CREATED, STATUS_REJECTED_INVALID], 
+        {
+            'incoming'  : postbank.incoming_cyberlab,
             'validator' : postbank.validator,
             'outgoing'  : postbank.outgoing,
         },

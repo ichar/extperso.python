@@ -5,16 +5,19 @@
 # ---------------------- #
 
 __all__ = [
-    'LOCAL_IS_CHANGE_EXPIREDATE', 'LOCAL_IS_PLASTIC_BATCHSORT', 'LOCAL_IS_PACKAGE_BATCHSORT', 'LOCAL_DATESTAMP', 'LOCAL_ID_TAG', 
-    'LOCAL_EASY_TIMESTAMP', 'LOCAL_FILE_DELIVERY_SPLITTER', 'LOCAL_DELIVERY_DATE', 
+    'LOCAL_IS_CHANGE_EXPIREDATE', 'LOCAL_IS_PLASTIC_BATCHSORT', 'LOCAL_IS_PACKAGE_BATCHSORT', 'LOCAL_IS_REPORT_TODAY', 
+    'LOCAL_CHECK_DELIVERY_ZONE', 'LOCAL_CHECK_POSTONLINE_FREE', 'LOCAL_POSTONLINE_WITH_FORMS', 'LOCAL_DATESTAMP', 'LOCAL_ID_TAG', 
+    'LOCAL_EASY_TIMESTAMP', 'LOCAL_FILE_DELIVERY_SPLITTER', 'LOCAL_DELIVERY_DATE', 'LOCAL_PRINT_TYPE', 'LOCAL_DELIVERY_WITH_DATE', 'LOCAL_DELIVERY_WITH_BARCODE', 'LOCAL_DELIVERY_WITH_POSTONLINE', 'LOCAL_FILESTATUS_READY',
     'DEFAULT_DELIVERY_TYPE', 'DEFAULT_MERGE_INTERVAL', 'DEFAULT_EOL', 'DEFAULT_FILETYPE', 'FILETYPE_FOLDER', 
-    'FILETYPE_POSTBANK_V1', 'FILETYPE_POSTBANK_ID', 'FILETYPE_POSTBANK_IDM', 'FILETYPE_POSTBANK_X5', 'FILETYPE_POSTBANK_LOYALTY', 'FILETYPE_POSTBANK_REFERENCE', 
+    'FILETYPE_POSTBANK_V1', 'FILETYPE_POSTBANK_ID', 'FILETYPE_POSTBANK_IDM', 'FILETYPE_POSTBANK_X5', 'FILETYPE_POSTBANK_CYBERLAB', 'FILETYPE_POSTBANK_LOYALTY', 'FILETYPE_POSTBANK_REFERENCE', 
     'CLIENT_NAME', 'SQL', 'REF_INDEX', 'REF_ENCODE_COLUMNS', 'ERROR_RECIPIENTS', 
     'local_GetPostBarcode', 'local_GetDeliveryCompany', 'local_GetErrorCode', 'local_GetPlasticInfo', 'local_GetPlasticSPrefix', 'local_GetDeliveryDate', 
     'local_GetPackageSize', 'local_GetPackageWeight', 'local_GetCardGroup', 'local_GetPackageType', 'local_GetMergePostfix', 'local_GetAREPRecordName', 
-    'local_ParseAddress', 'local_SetDeliveryDate', 'local_SetExpireDate', 'local_UpdateStampCode', 'local_RegisterPostOnline', 'local_ChangePostOnline', 
-    'local_IsFastFile', 'local_IsAddrDelivery', 'local_IsNamedType', 'local_WithCardHolder', 'local_WithIndigo', 'local_WithLoyalty', 
-    'local_PackageNumberGroups', 
+    'local_ParseAddress', 'local_SetDeliveryDate', 'local_SetExpireDate', 'local_GetIssueNumber',
+    'local_UpdateStampCode', 'local_RegisterPostOnline', 'local_ChangePostOnline', 'local_IsCyberLab', 'local_UpdateCyberLabNumber',
+    'local_IsPlasticDisabled', 'local_IsFastFile', 'local_IsAddrDelivery', 'local_IsNamedType', 'local_IsDeliveryWithDate', 'local_IsDeliveryWithBarcode', 'local_IsDeliveryWithPostOnline', 
+    'local_WithCardHolder', 'local_WithIndigo', 'local_WithLoyalty', 'local_WithBarcode', 'local_WithEnclosure', 'local_CheckDesignIsInvalid',
+    'local_PackageNumberGroups', 'local_CaseEnvelope', 'local_CaseLeaflet', 'local_CaseCover', 'local_PlasticFrontPrintType', 'local_PlasticBackPrintType', 
     'local_filetypes'
     ]
 
@@ -31,6 +34,47 @@ __all__ = [
 #   20190926: настройки ИД 'plastic_types' Mir Privilege Individual: 22007701
 #   20191112: настройки МИР 22007704A Карты лояльности проекта "Пятерочка" (Именная)
 #   20191112: настройки ИД Visa Rewards Marki Individual: 40599222
+#   20191204: регистрация упаковок local_GetPackageType, добавлен 5-й ключ 'plastic_type' (дублирование транспортных упаковок)
+#   20191211: дизайн 41826203 Visa Platinum Green World VP18
+#   20200110: БИН 405991 'pay_system' перепривязка 'LongRSA' (ключ RSA, Мельникова)
+#   20200114: флаг 'plastic_types'... disabled, блокировка дизайнов: local_IsPlasticDisabled, 
+#   20200114: блокировка неактуальных дизайнов: 40599112
+#   20200117: добавлен дизайн 40599223, Visa Classic Express Name (именные)
+#   20200117: дизайн 220077014, изменен параметр PAY_SYSTEM:KONA_2320_NSPK_701
+#   20200421: актуализация ТЗ 1.3.0:
+#   20200421: добавлена линейка продуктов Mir EagleDual NoName: 22007702C, 22007702D, 22007702E
+#   20200421: блокировка неактуальных дизайнов: 40599211
+#   20200422: маскированы опции СПСР, s-prefix:S (None)
+#   20200422: добавлены опции Почта России доставка EMS, s-prefix:E
+#   20200424: добавлен признак "Конверты ОВПО" (FILETYPE_POSTBANK_CASECOVER_PRODUCTS, тег CASE_COVER): 22007702D
+#   20200518: WebPerso Command: RepeatUnloadedReport (RUR)
+#   20200603: настройки EMS, local_IsDeliveryWithPostonline
+#   20200904: параметры дизайнов: 22007702C, 22007702D, 22007702E
+#   20201007: смена дизайнов 22007702 на БИН 22007706 (!) настройки выполнять по БИН (ПРИЛОЖЕНИЕ 2. СООТВЕТСТВИЕ КОДОВ ДИЗАЙНОВ И ТИПОВ КАРТ)
+#   20201022: добавлен дизайн 220077043, MirGreenWorld (именные)
+#   20201130: дизайн 41826201 Visa Marki Vip VP24
+#   20201130: ПРОЕКТ "КИБЕРЛАБ" дизайны 40599212, 40599213, 40599214, 40599215 Visa Cyberlab VP25,VP26,VP27,VP28
+#   20201204: Добавлен Тип файла PostBank_CL (КИБЕРЛАБ): FILETYPE_POSTBANK_CYBERLAB
+#   20210114: Флаг LOCAL_CHECK_POSTONLINE_FREE
+#   20210116: Контроль загрузки периода config.IsCheckSuspendedDates
+#   20210209: дизайн 220077012 Mir Eagle Dual Name VP29
+#   20210312: дизайн 220077014, изменен параметр PAY_SYSTEM:KONA_2350_NSPK_701 (отменено)
+#   20210407: дизайн 41826101 Visa Business Corporate VP30
+#   20210412: local_CaseEnvelope, local_CaseLeaflet - конверт, листовка, параметры типа файла: 'envelope', 'leaflet'
+#   20210423: AREPRecord root record definitions (special for VP30)
+#   20210430: дизайн 40599124 Visa Вездеход 120 KONA_2320 VP31
+#   20210430: дизайн 40599125 Visa Вездеход 120 NoName KONA_2320 VP32
+#   20210528: дизайн 220077071 Мир Supreme KONA_2350 VP33
+#   20210628: тип отправки EMS, mail-type:EMS_TENDER, transport-mode:EXPRESS (письмо банка от 17.06.2021)
+#   20210823: добавить поле отчета CRDSRT Номер тиража: local_GetIssueNumber
+#   20210914: смена чипа 'MICRON_706' на 'KONA_2350' для дизайнов 22007702C, 22007702D, 22007702E
+#   20210924: дизайн 220077071 (VP33, Supreme): конверт, листовка
+#   20211014: дизайн 40599126 (индивидульное изображения будет в поле в файле на персо) Visa Platinum Individual KONA_2350 VP34
+#   20211204: блокировка дизайна 40599113, сборка ядра 1.50
+#   20211211: освобождение индекса отправления core.srvlib: resumeSeen
+#   20211213: контроль отправки отчетов: LOCAL_FILESTATUS_READY
+#   20220124: дизайн 52731701 (VP35, MC World Elite Debit)
+#   20220208: дизайн 220077071 (VP33, Supreme): добавлен картхолдер (отгрузка C2)
 #
 
 from copy import deepcopy
@@ -39,14 +83,6 @@ import os
 import pymssql
 
 import config
-"""
-from config import (
-     IsPrintExceptions,
-     UTC_EASY_TIMESTAMP, DATE_STAMP,
-     print_exception,
-     postonline
-)
-"""
 from app.core import ProcessException, AbstractIncomingLoaderClass, AbstractReferenceLoaderClass
 from app.types import *
 from app.barcodes import Code128Barcode, I25Barcode, EAN13Barcode
@@ -58,7 +94,7 @@ from ..defaults import *
 from ..postonline import registerPostOnline, changePostOnline
 from ..xmllib import *
 
-from ext import calendar
+from ext import calendar, suspended_dates
 
 ##  ---------------
 ##  LOCAL CONSTANTS
@@ -72,6 +108,12 @@ LOCAL_IS_PLASTIC_BATCHSORT = False
 LOCAL_IS_PACKAGE_BATCHSORT = True
 # Установить максимальную дату отгрузки
 LOCAL_IS_MAX_DELIVERY_DATE = True
+# Использовать текущую дату в отчетности: 0 - повтор отчетности
+LOCAL_IS_REPORT_TODAY = 1
+# Выполнять проверку Тарифного пояса при приеме справочника филиалов
+LOCAL_CHECK_DELIVERY_ZONE = False
+# Регистрировать только новые(пустые) отправления ПочтаРоссии
+LOCAL_CHECK_POSTONLINE_FREE = 0
 # Тег ID записи
 LOCAL_ID_TAG = 'ID'
 # Формат даты отгрузки в отчетах
@@ -82,6 +124,18 @@ LOCAL_EASY_TIMESTAMP = '%Y%m%d_%H%M'
 LOCAL_FILE_DELIVERY_SPLITTER = '$'
 # Ключ даты отгрузки
 LOCAL_DELIVERY_DATE = 'LOCAL_DELIVERY_DATE'
+# Выгрузка расширенного списка документов на отгрузку: 0 - пакет документации по умолчанию, 1 - расширенный пакет
+LOCAL_POSTONLINE_WITH_FORMS = 0
+# Тип печати: 'THERMO' - этикетка (самоклеящийся ярлык), 'PAPER' - печатная форма E-1
+LOCAL_PRINT_TYPE = 'PAPER'
+# Префиксы транспортных компаний с датой отгрузки
+LOCAL_DELIVERY_WITH_DATE = ('P', 'E')
+# Префиксы транспортных компаний с ШПИ
+LOCAL_DELIVERY_WITH_BARCODE = ('P', 'E')
+# Префиксы транспортных компаний с регистрацией отправлений
+LOCAL_DELIVERY_WITH_POSTONLINE = ('P', 'E')
+# Статусы файлов для отправки отчетов
+LOCAL_FILESTATUS_READY = (28, 61, 62, 71, 198)
 
 ##  --------
 ##  DEFAULTS
@@ -136,9 +190,11 @@ ERROR_RECIPIENTS = ('personalization@pochtabank.ru',)
 # ------------------------- #
 
 FILETYPE_POSTBANK_PRODUCT_DESIGNS = \
-    '40599111:40599112:40599113:40599114:40599115:40599122:' \
-    '40599211:40599216:40599217:40599218:40599219:40599220:40599222:' \
-    '220077014:220077044:220077045:22007704A:'
+    '220077012:220077014:22007702C:22007702D:22007702E:220077043:220077044:220077045:22007704A:220077071' \
+    '40599111:40599112:40599113:40599114:40599115:40599122:40599124:40599125:40599126:' \
+    '40599211:40599212:40599213:40599214:40599215:40599216:40599217:40599218:40599219:40599220:40599222:40599223:' \
+    '41826101:41826201:41826203:' \
+    '52731701'
 
 FILETYPE_POSTBANK_TEMPLATE = {
     'class'           : AbstractIncomingLoaderClass,
@@ -179,15 +235,31 @@ FILETYPE_POSTBANK_TEMPLATE = {
     # Порядок группировки карт
     # ------------------------
     'card_groups' : {
-        'N'   : 1,
-        'NC'  : 2,
-        'NCA' : 3,
-        'I'   : 4,
-        'IC'  : 5,
-        'IA'  : 6,
-        'ICA' : 7,
+        'N'   : 1, # C1
+        'NC'  : 2, # C2
+        'NCA' : 3, # inactive
+        'I'   : 4, # C1
+        'IC'  : 5, # inactive
+        'IA'  : 6, # inactive
+        'ICA' : 7, # C3
     },
 }
+
+FILETYPE_POSTBANK_NONAME_PRODUCTS = (
+    '40599115', '40599125', '40599216', '40599219', '40599220', '41826101', '22007702C', '22007702D', '22007702E', '220077044', '220077045',
+)
+
+FILETYPE_POSTBANK_WITHCARDHOLDER_PRODUCTS = (
+    '22007702D', '22007702E', '220077045', '220077071', '41826101',
+)
+
+FILETYPE_POSTBANK_CASECOVER_PRODUCTS = (
+    '22007702D', '220077045', 
+)
+
+FILETYPE_POSTBANK_GREENWORLD_PRODUCTS = (
+    '40599114', 
+)
 
 ##  -------------------------------
 ##  НЕИМЕННЫЕ И ИМЕННЫЕ КАРТЫ БАНКА
@@ -198,18 +270,105 @@ FILETYPE_POSTBANK_V1 = deepcopy(FILETYPE_POSTBANK_TEMPLATE)
 FILETYPE_POSTBANK_V1.update({
     'tytle'           : '%s входящий файл заказа PostBank_v1 версия 1' % CLIENT_NAME[0],
     'filetype'        : 'PostBank_v1',
-    # ------------------------------
-    # Параметры банковских продуктов
-    # ------------------------------
-    #   product     -- PlasticType: {VP01|VP02|VP03|VP04|VP09|VP10|VP11|VP12|VP14}
+    # ------------------------------------------------
+    # Параметры банковских продуктов (по коду дизайна)
+    # ------------------------------------------------
+    #   product     -- PlasticType: {VP01|VP02|VP03|VP04|VP09|VP10|VP11|VP12|VP18|VP20|VP21|VP22|VP23|VP24|VP29}
     #   scode       -- ServiceCode (MSDP)
     #   pvki        -- PVKI (MSDP)
     #   d-prefix    -- префикс баркода карты (Префикс для ШК EAN-13)
     #   s-prefix    -- префикс баркода упаковки по транспортным компаниям: (без адресной доставки, с адресной доставкой)
     #   pay_system  -- PAY_SYSTEM (SDC)
     #   name        -- наименование пластика
+    #   disabled    -- признак блокировки дизайна (не использовать в отгрузке)
     #
     'plastic_types'   : {
+        '220077012'   : {
+            'product'    : 'VP29', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '616',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'KONA_2350',
+            'name'       : 'Mir EagleDual Name',
+            'BIN'        : '22007701',
+        },
+        '22007702C'   : {
+            'product'    : 'VP20', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '718',
+            's-prefix'   : {
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'E'         : ('RER', None),
+            },
+            'pay_system' : 'KONA_2350', 
+            'name'       : 'Mir EagleDual NoName',
+            'BIN'        : '22007706',
+        },
+        '22007702D'   : {
+            'product'    : 'VP21', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '718',
+            's-prefix'   : {
+                'D'         : ('511', None),
+                'default'   : ('511', None),
+                'E'         : ('511', None),
+            },
+            'pay_system' : 'KONA_2350', 
+            'name'       : 'Mir EagleDual NoName PR',
+            'BIN'        : '22007706',
+        },
+        '22007702E'   : {
+            'product'    : 'VP22', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '718',
+            's-prefix'   : {
+                'D'         : ('521', None),
+                'default'   : ('521', None),
+                'E'         : ('521', None),
+            },
+            'pay_system' : 'KONA_2350', 
+            'name'       : 'Mir EagleDual NoName PFR',
+            'BIN'        : '22007706',
+        },
+        '220077043'   : {
+            'product'    : 'VP23', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '317',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'KONA_2350',
+            'name'       : 'MirGreenWorld',
+            'BIN'        : '22007704',
+        },
+        '220077071'   : {
+            'product'    : 'VP33', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '719',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'KONA_2350',
+            'name'       : 'Mir Supreme',
+            'BIN'        : '22007707',
+            'envelope'   : 'C2-COVER1.NO-WINDOW',
+            'leaflet'    : 'C2-I.SUPREME',
+        },
         '40599112'    : {
             'product'    : 'VP03', 
             'scode'      : '201', 
@@ -218,10 +377,11 @@ FILETYPE_POSTBANK_V1.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
-            'pay_system' : 'KONA_2320',
+            'pay_system' : 'LongRSA',
             'name'       : 'Visa Platinum PayWave Eagle',
+            'disabled'   : 0,
         },
         '40599113'    : {
             'product'    : 'VP01', 
@@ -231,10 +391,11 @@ FILETYPE_POSTBANK_V1.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
-            'pay_system' : 'KONA_2320',
+            'pay_system' : 'LongRSA',
             'name'       : 'Visa Platinum PayWave Cosmos',
+            'disabled'   : 1,
         },
         '40599114'    : {
             'product'    : 'VP04', 
@@ -244,9 +405,9 @@ FILETYPE_POSTBANK_V1.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
-            'pay_system' : 'KONA_2320',
+            'pay_system' : 'LongRSA',
             'name'       : 'Visa Platinum PayWave Green World',
         },
         '40599115'    : {
@@ -255,12 +416,38 @@ FILETYPE_POSTBANK_V1.update({
             'pvki'       : '1', 
             'd-prefix'   : '516',
             's-prefix'   : {
-                'D'         : ('RLB', 'RLB'),
-                'default'   : ('RPR', 'RPR'),
-                'S'         : ('RSR', 'RSR'),
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'E'         : ('RER', None),
             },
-            'pay_system' : 'KONA_2320',
+            'pay_system' : 'LongRSA',
             'name'       : 'Visa Platinum PayWave Cosmos NoName',
+        },
+        '40599124'    : {
+            'product'    : 'VP31', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '516',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Вездеход 120',
+        },
+        '40599125'    : {
+            'product'    : 'VP32', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '516',
+            's-prefix'   : {
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'E'         : ('RER', None),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Вездеход 120 NoName',
         },
         '40599216'    : {
             'product'    : 'VP14', 
@@ -268,9 +455,9 @@ FILETYPE_POSTBANK_V1.update({
             'pvki'       : '1', 
             'd-prefix'   : '416',
             's-prefix'   : {
-                'D'         : ('RLB', 'RLB'),
-                'default'   : ('RPR', 'RPR'),
-                'S'         : ('RSR', 'RSR'),
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'E'         : ('RER', None),
             },
             'pay_system' : 'LongRSA',
             'name'       : 'Visa Classic PayWave Express',
@@ -283,7 +470,7 @@ FILETYPE_POSTBANK_V1.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
             'pay_system' : 'LongRSA',
             'name'       : 'Visa MARKI Red',
@@ -297,6 +484,7 @@ FILETYPE_POSTBANK_V1.update({
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
                 'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
             'pay_system' : 'LongRSA',
             'name'       : 'Visa MARKI Blue',
@@ -307,9 +495,10 @@ FILETYPE_POSTBANK_V1.update({
             'pvki'       : '1', 
             'd-prefix'   : '416',
             's-prefix'   : {
-                'D'         : ('RLB', 'RLB'),
-                'default'   : ('RPR', 'RPR'),
-                'S'         : ('RSR', 'RSR'),
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'S'         : ('RSR', None),
+                'E'         : ('REN', None),
             },
             'pay_system' : 'LongRSA',
             'name'       : 'Visa MARKI Red NoName',
@@ -320,12 +509,82 @@ FILETYPE_POSTBANK_V1.update({
             'pvki'       : '1', 
             'd-prefix'   : '416',
             's-prefix'   : {
-                'D'         : ('RLB', 'RLB'),
-                'default'   : ('RPR', 'RPR'),
-                'S'         : ('RSR', 'RSR'),
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'E'         : ('REN', None),
             },
             'pay_system' : 'LongRSA',
             'name'       : 'Visa MARKI Blue NoName',
+        },
+        '41826101'    : {
+            'product'    : 'VP30', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '816',
+            's-prefix'   : {
+                'D'         : ('RLB', None),
+                'default'   : ('RPR', None),
+                'E'         : ('RER', None),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Business Corporate',
+            'envelope'   : 'C2-COVER1.01',
+            'leaflet'    : 'C2-N.01',
+            'AREPRecord' : 'RecordX5',
+        },
+        '41826201'    : {
+            'product'    : 'VP24', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '518',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa MARKI VIP',
+        },
+        '41826203'    : {
+            'product'    : 'VP18', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '518',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Platinum Green World',
+        },
+        '40599223'    : {
+            'product'    : 'VP19', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '416',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Classic Express Name',
+        },
+        '52731701'   : {
+            'product'    : 'VP35', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '520',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'KONA_2320_MC',
+            'name'       : 'MC World Elite Debit',
+            'BIN'        : '527317',
+            'envelope'   : 'C2-COVER1.NO-WINDOW',
         },
     },
 })
@@ -342,7 +601,7 @@ FILETYPE_POSTBANK_ID.update({
     # ------------------------------
     # Параметры банковских продуктов
     # ------------------------------
-    #   product     -- PlasticType: {VP05|VP06|VP13}
+    #   product     -- PlasticType: {VP05|VP06|VP13|VP17}
     #   scode       -- ServiceCode (MSDP)
     #   pvki        -- PVKI (MSDP)
     #   d-prefix    -- префикс баркода карты
@@ -359,24 +618,10 @@ FILETYPE_POSTBANK_ID.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
-            'pay_system' : 'KONA_2320',
+            'pay_system' : 'LongRSA', #'KONA_2320',
             'name'       : 'Visa Platinum Individual',
-            'indigo'     : 1,
-        },
-        '40599211'    : {
-            'product'    : 'VP06', 
-            'scode'      : '201', 
-            'pvki'       : '1', 
-            'd-prefix'   : '416',
-            's-prefix'   : {
-                'D'         : ('RAL', 'ROL'),
-                'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
-            },
-            'pay_system' : 'LongRSA',
-            'name'       : 'Visa Classic Individual',
             'indigo'     : 1,
         },
         '40599122'    : {
@@ -387,11 +632,39 @@ FILETYPE_POSTBANK_ID.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
-            'pay_system' : 'KONA_2320',
+            'pay_system' : 'LongRSA',
             'name'       : 'Visa REWARDS Individual',
             'indigo'     : 1,
+        },
+        '40599126'    : {
+            'product'    : 'VP34', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '516',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Platinum Ind LogoBack',
+            'indigo'     : 1,
+        },
+        '40599211'    : {
+            'product'    : 'VP06', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : '416',
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Classic Individual',
+            'indigo'     : 1,
+            'disabled'   : 1,
         },
         '40599222'    : {
             'product'    : 'VP17', 
@@ -401,7 +674,7 @@ FILETYPE_POSTBANK_ID.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
             'pay_system' : 'LongRSA',
             'name'       : 'Visa Rewards Marki Individual',
@@ -440,8 +713,9 @@ FILETYPE_POSTBANK_IDM.update({
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
                 'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
-            'pay_system' : 'KONA_2320_NSPK',
+            'pay_system' : 'KONA_2320_NSPK_701', # KONA_2320_NSPK
             'name'       : 'Mir Privilege Individual',
             'indigo'     : 1,
         },
@@ -478,7 +752,7 @@ FILETYPE_POSTBANK_X5.update({
             's-prefix'   : {
                 'D'         : ('RLB', 'RLB'),
                 'default'   : ('RPR', 'RPR'),
-                'S'         : ('RSR', 'RSR'),
+                'E'         : ('RER', 'ROL'),
             },
             'pay_system' : 'KONA_2320_X5',
             'name'       : 'Mir X5 Dual',
@@ -491,12 +765,11 @@ FILETYPE_POSTBANK_X5.update({
             's-prefix'   : {
                 'D'         : ('531', '531'),
                 'default'   : ('531', '531'),
-                'S'         : ('531', '531'),
+                'E'         : ('531', '531'),
             },
             'pay_system' : 'KONA_2320_X5',
             'name'       : 'Mir X5 Dual PR',
         },
-    'plastic_types'   : {
         '22007704A'   : {
             'product'    : 'VP16', 
             'scode'      : '201', 
@@ -505,12 +778,100 @@ FILETYPE_POSTBANK_X5.update({
             's-prefix'   : {
                 'D'         : ('RAL', 'ROL'),
                 'default'   : ('RPN', 'ROL'),
-                'S'         : ('RSN', 'ROL'),
+                'E'         : ('REN', 'ROL'),
             },
             'pay_system' : 'KONA_2320_X5',
             'name'       : 'Mir X5 Dual Name',
         },
     },
+})
+
+##  ---------------
+##  ПРОЕКТ КИБЕРЛАБ
+##  ---------------
+
+FILETYPE_POSTBANK_CYBERLAB = deepcopy(FILETYPE_POSTBANK_TEMPLATE)
+
+FILETYPE_POSTBANK_CYBERLAB.update({
+    'tytle'           : '%s входящий файл заказа PostBank_CL КИБЕРЛАБ' % CLIENT_NAME[0],
+    'filetype'        : 'PostBank_CL',
+    'postfix'         : '_CL',
+    # ------------------------------
+    # Параметры банковских продуктов
+    # ------------------------------
+    #   product     -- PlasticType: {VP25|VP26|VP27|VP28}
+    #   scode       -- ServiceCode (MSDP)
+    #   pvki        -- PVKI (MSDP)
+    #   d-prefix    -- префикс баркода карты
+    #   s-prefix    -- префикс баркода упаковки по транспортным компаниям: (без адресной доставки, с адресной доставкой)
+    #   pay_system  -- PAY_SYSTEM (SDC)
+    #   name        -- наименование пластика
+    #
+    'plastic_types'   : {
+        '40599212'    : {
+            'product'    : 'VP25', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : None,
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'S'         : ('RSN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Cyberlab Wasted',
+            'front_print': 'no',
+            'back_print' : 'LASER',
+            'no_barcode' : 1,
+        },
+        '40599213'    : {
+            'product'    : 'VP26', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : None,
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'S'         : ('RSN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Cyberlab Alien',
+            'front_print': 'no',
+            'back_print' : 'LASER',
+            'no_barcode' : 1,
+        },
+        '40599214'    : {
+            'product'    : 'VP27', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : None,
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'S'         : ('RSN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Cyberlab SWAT',
+            'front_print': 'no',
+            'back_print' : 'LASER',
+            'no_barcode' : 1,
+        },
+        '40599215'    : {
+            'product'    : 'VP28', 
+            'scode'      : '201', 
+            'pvki'       : '1', 
+            'd-prefix'   : None,
+            's-prefix'   : {
+                'D'         : ('RAL', 'ROL'),
+                'default'   : ('RPN', 'ROL'),
+                'S'         : ('RSN', 'ROL'),
+            },
+            'pay_system' : 'LongRSA',
+            'name'       : 'Visa Cyberlab Dragon',
+            'front_print': 'no',
+            'back_print' : 'LASER',
+            'no_barcode' : 1,
+        },
     },
 })
 
@@ -642,6 +1003,13 @@ SQL = {
                         'GROUP BY PackageNumber, PackageType '
                         'ORDER BY Records desc, PackageType, PackageNumber',
     },
+    'CyberLabNumber' : {
+        'register' : '[dbo].[REGISTER_PostBankCyberLabNumber_sp]',
+    },
+    'IssueNumber' : {
+        'get'      : 'SELECT PValue FROM [BankDB].[dbo].[WEB_FileTZs_vw] '
+                        'WHERE FileType=%s and TagValue=%s and PName=\'Номер тиража\''
+    },
 }
 
 REF_INDEX = makeFileTypeIndex(FILETYPE_POSTBANK_REFERENCE)
@@ -655,7 +1023,22 @@ local_filetypes = {
     FILETYPE_POSTBANK_ID['filetype'] : FILETYPE_POSTBANK_ID,
     FILETYPE_POSTBANK_IDM['filetype'] : FILETYPE_POSTBANK_IDM,
     FILETYPE_POSTBANK_X5['filetype'] : FILETYPE_POSTBANK_X5,
+    FILETYPE_POSTBANK_CYBERLAB['filetype'] : FILETYPE_POSTBANK_CYBERLAB,
 }
+#
+#   Local Functions
+#
+def _get_filetype(filetype):
+    return filetype and local_filetypes.get(filetype) or DEFAULT_FILETYPE
+
+def _get_product_param(filetype, product_design, param, default=None):
+    """
+        Returns `key` value for given product design param
+    """
+    f = _get_filetype(filetype)
+    p = f and f.get('plastic_types')
+    d = p and product_design and p.get(product_design)
+    return d and param and d.get(param) or default
 
 # ========================= #
 
@@ -665,11 +1048,11 @@ def local_GetErrorCode(keys, key, code=None):
     """
     return key in keys and '%02d' % (keys.index(key)+1) or code or '00'
 
-def local_GetDeliveryCompany(value):
+def local_GetDeliveryCompany(delivery_type):
     """
-        Условное обозначение транспортной компании
+        Условное обозначение транспортной компании по способу доставки
     """
-    return value == 'СПСР' and 'S' or value =='DHL' and 'D' or 'P'
+    return delivery_type == 'СПСР' and 'S' or delivery_type == 'EMS' and 'E' or delivery_type =='DHL' and 'D' or 'P'
 
 def local_GetPostBarcode(value, code=None):
     """
@@ -689,28 +1072,51 @@ def local_GetPostBarcode(value, code=None):
         return EAN13Barcode().ttf(value)
     return Code128Barcode().ttf(value)
 
-def local_GetPlasticInfo(product, **kw):
+def local_IsPlasticDisabled(product_design, **kw):
+    """
+        Проверка блокировки дизайна (disabled).
+        
+        Аргументы:
+            product_design -- str, символьный код продукта '405991XX'
+        
+        Ключевые аргументы:
+            filetype       -- str, тип файла
+
+        Возврат:
+            bool, флаг блокировки: 1/0.
+    """
+    filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
+    value = filetype['plastic_types'].get(product_design)
+
+    if not value:
+        return False
+
+    return value.get('disabled') and True or False
+
+def local_GetPlasticInfo(product_design, **kw):
     """
         Информация о продукте.
         
         Аргументы:
-            product  -- str, символьный код продукта '405991XX'
+            product_design -- str, символьный код дизайна '405991XX[X]'
         
         Ключевые аргументы:
-            filetype -- dict, дескриптор типа файла
-            key      -- str, идентификатор параметра (keys)
+            filetype       -- str, тип файла
+            key            -- str, идентификатор параметра (keys)
 
         Возврат:
-            list, [<код продукта>, <сервис-код MSDP>, <PVKI>, <префикс дизайна>, <тип чипа>, <name>].
+            list, [<код дизайна>, <сервис-код MSDP>, <PVKI>, <префикс дизайна>, <тип чипа>, <name>].
     """
     keys = ('product', 'scode', 'pvki', 'd-prefix', 'pay_system', 'name',)
-    filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
-    value = filetype['plastic_types'].get(product)
 
-    if not value:
-        return (None,)*6
+    filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
+    value = filetype['plastic_types'].get(product_design)
 
     key = kw.get('key')
+
+    if not value and not key:
+        return (None,)*6
+
     if key:
         return value and key and value.get(key) or None
     return [value and value.get(x) for x in keys]
@@ -721,25 +1127,34 @@ def local_GetPlasticSPrefix(product_design, delivery_type, **kw):
         
         Аргументы:
             product_design -- str, символьный код продукта '405991XX'
-            delivery_type  -- str, тип доставки (транспортная компания) {EMS|DHL|...}
+            delivery_type  -- str, тип доставки (транспортная компания) {СПСР|EMS|DHL|...}, default:ПочтаРоссии ('P')
         
         Ключевые аргументы:
-            filetype       -- dict, дескриптор типа файла
+            orderfile      -- str, имя файла
+            filetype       -- str, тип файла
             index          -- int, {0|1} 1:адресная доставка
 
         Возврат:
             str, префикс для пломбы: {ROL|RAL|...}, XXX - значение не определено.
     """
     key = 's-prefix'
+
+    orderfile = kw.get('filename') or ''
     filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
     index = kw.get('index') or 0
     item = filetype['plastic_types'].get(product_design)
 
     if not (item and isinstance(item, dict) and key in item):
-        raise ProcessException('Unexpected Error[PlasticSPrefix], product_design:%s' % product_design)
+        raise ProcessException('Unexpected Error[PlasticSPrefix]: %s product_design:%s' % (
+            orderfile, product_design))
 
     item = item[key]
     delivery_company = local_GetDeliveryCompany(delivery_type)
+
+    if not delivery_company in item and delivery_company != 'P':
+        raise ProcessException('Unexpected Error[PlasticSPrefix]: %s product_design:%s, delivery_company:%s' % (
+            orderfile, product_design, delivery_company))
+
     value = item.get(delivery_company) or item.get('default')
 
     return value and isIterable(value) and len(value) > index and value[index] or '000' # XXX
@@ -760,6 +1175,7 @@ def local_GetPackageType(node):
     branch_delivery = getTag(node, 'BRANCHDELIVERY')
     # Код филиала доставки карт
     branch_send_to = getTag(node, 'BRANCH_SEND_TO')
+    #return '%s:%s:%s:%s:%s||%s:%s' % (delivery_company, branch_send_to, branch_delivery, package_type, plastic_type, card_type, plastic_type)
     return '%s:%s:%s:%s||%s:%s' % (delivery_company, branch_send_to, branch_delivery, package_type, card_type, plastic_type)
 
 def local_GetPackageSize(node, order):
@@ -774,8 +1190,8 @@ def local_GetPackageSize(node, order):
     card_type = getTag(node, 'CardType')
     # Вид упаковки (КЕЙС1, КЕЙС2)
     package_type = getTag(node, 'PackageType')
-    # Способ доставки (транспортная компания)
-    delivery_company = local_GetDeliveryCompany(getTag(node, 'DeliveryType'))
+    # Ттранспортная компания
+    delivery_company = getTag(node, 'DeliveryCompany')
     # Кол-во карт в заказе
     size = order.fqty
     if card_type in ('ICA','IA') and package_type in ('C2','C3'):
@@ -785,6 +1201,8 @@ def local_GetPackageSize(node, order):
             s, p = 20, 10
         elif delivery_company == 'S':
             s, p = 20, 10
+        elif delivery_company == 'E':
+            s, p = 20, 10
         else:
             s, p = 20, 1
     else:
@@ -792,6 +1210,8 @@ def local_GetPackageSize(node, order):
             s, p = 10, size <= 200 and 20 or 50
         elif delivery_company == 'S':
             s, p = 10, size <= 50 and 5 or size <= 100 and 10 or size <= 500 and 50 or 50 # 70 !
+        elif delivery_company == 'E':
+            s, p = 10, size <= 200 and 20 or 50
         else:
             s, p = 10, 15
     return s, p
@@ -804,6 +1224,10 @@ def local_GetPackageWeight(ptype, cards, s=10, delivery_company=None, enclosure=
             ptype -- тип упаковки CASE_BOX: C1|C2-BOX|C2-LETTER|C3-LETTER
             cards -- кол-во карт в отправлении
             s     -- максимальное кол-во карт в упаковке 1-го уровня, default:10
+
+        Ключевые аргументы:
+            delivery_company -- str, код транспортной компании: D|S|P
+            enclosure        -- str, буклет-вложение (наименование)
     """
     if ptype == 'C2-BOX':
         return int(cards*18 + 42)
@@ -821,7 +1245,7 @@ def local_GetCardGroup(key, **kw):
         Группа карт в сортировке
         
         Ключевые аргументы:
-            filetype -- dict, дескриптор типа файла
+            filetype       -- str, тип файла
     """
     filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
     return filetype['card_groups'].get(key) or 9
@@ -830,8 +1254,11 @@ def local_GetMergePostfix(**kw):
     filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
     return filetype.get('postfix') or ''
 
-def local_GetAREPRecordName(order):
-    return local_WithLoyalty(order) and 'RecordX5'
+def local_GetAREPRecordName(order, filetype, product_design, **kw):
+    return \
+        local_WithLoyalty(order) and (kw.get('is_addr_delivery') and 'Record' or 'RecordX5') or \
+        local_IsCyberLab(order) and 'RecordCL' or \
+        _get_product_param(filetype, product_design, 'AREPRecord')
 
 def local_ParseAddress(node, key):
     """
@@ -856,9 +1283,7 @@ def local_ParseAddress(node, key):
         15 - владение;
         16 - номер офиса.
     """
-    items = ['index', 'region', 'district', 'city', 'town', 'street', 'house', 'building', 'flat']
-    x = getTag(node, key).split(',')
-    return dict(zip(items, x))
+    return FMT_ParseAddress(getTag(node, key), as_dict=True)
 
 def local_UpdateStampCode(node, order, connect, logger, saveback, **kw):
     """
@@ -873,6 +1298,7 @@ def local_UpdateStampCode(node, order, connect, logger, saveback, **kw):
 
         Ключевые аргументы:
             filename            -- str, имя формируемого файла-заказа
+            filetype            -- str, тип файла
 
         Возврат:
             str, stamp_code     -- номер пломбы
@@ -884,7 +1310,14 @@ def local_UpdateStampCode(node, order, connect, logger, saveback, **kw):
     filetype = kw.get('filetype') or order.filetype
     
     recno = getTag(node, 'FileRecNo')
+
+    # Дизайн продукта
     product_design = getTag(node, 'ProductDesign')
+    """
+    if local_IsPlasticDisabled(product_design, filetype=filetype):
+        config.print_to(None, 'PlasticDisabled:%s' % product_design)
+        return ('',)*4
+    """
     card_type = getTag(node, 'CardType')
     package_type = getTag(node, 'PackageType')
 
@@ -894,7 +1327,7 @@ def local_UpdateStampCode(node, order, connect, logger, saveback, **kw):
 
     # Префикс для пломб
     index = is_addr_delivery and 1 or 0
-    stamp_prefix = local_GetPlasticSPrefix(product_design, delivery_type, index=index, filetype=filetype)
+    stamp_prefix = local_GetPlasticSPrefix(product_design, delivery_type, index=index, filetype=filetype, filename=orderfile)
 
     mode = 'StampNumber'
     """
@@ -902,12 +1335,14 @@ def local_UpdateStampCode(node, order, connect, logger, saveback, **kw):
     if card_type in ('ICA', 'IA') and package_type in ('C2','C3'):
         mode = 'PostCode'
     """
-
     package_type = local_GetPackageType(node)
     stamp_limit, package_limit = local_GetPackageSize(node, order)
     params = [1, orderfile, package_type, recno, PAN4, stamp_limit, package_limit, pymssql.output(str)]
 
-    cursor, is_error = connect(SQL[mode]['register'], params, with_commit=False, with_result=True, callproc=True)
+    if config.IsDeepDebug:
+        config.print_to(None, '%s, params:%s' % (mode, params[:7]))
+
+    cursor, is_error = connect(SQL[mode]['register'], params, with_commit=False, with_result=True, callproc=True, raise_error=True)
 
     if is_error or not cursor or len(cursor) < 7:
         raise ProcessException('SQL Error[register], mode:%s, cursor:%s' % (mode, cursor))
@@ -917,7 +1352,7 @@ def local_UpdateStampCode(node, order, connect, logger, saveback, **kw):
     stamp_number, stamp_index, package_number, post_code = int(x[0] or 0), x[1], int(x[2] or 0), x[3]
 
     if config.IsDebug:
-        config.print_to(None, '%s:%s, params:%s' % (mode, x, params[:6]))
+        config.print_to(None, '%s:%s, params:%s' % (mode, x, params[:7]))
 
     # --------------------
     # Номер пломбы [an 10]
@@ -991,10 +1426,12 @@ def local_GetDeliveryDate(**kw):
     today = getToday()
     delta = 0
 
-    if kw.get('is_fastfile'):
+    is_fastfile = kw.get('is_fastfile') and True or False
+
+    if is_fastfile:
         delta = 1
     elif kw.get('is_with_indigo'):
-        delta = size < 106 and 4 or size < 421 and 5 or 10
+        delta = size < 106 and 3 or size < 421 and 4 or size < 1001 and 5 or size < 1501 and 7 or 10
     elif kw.get('is_with_loyalty'):
         delta = size < 1000 and 1 or \
             size < 5000  and (package_type == 'C1' and 2 or 3) or \
@@ -1013,7 +1450,7 @@ def local_GetDeliveryDate(**kw):
     #
     #   Перенос на вторник, если заказ поступил позже четверга
     #
-    if daydelta(today, delta).isoweekday() == 1 and today.isoweekday() > 4:
+    if not is_fastfile and daydelta(today, delta).isoweekday() == 1 and today.isoweekday() > 4:
         delta += 1
 
     date = daydelta(today, delta)
@@ -1022,6 +1459,9 @@ def local_GetDeliveryDate(**kw):
     #
     d = None
     for x in calendar:
+        while date.isoweekday() > 5:
+            date = daydelta(date, 1)
+            d = None
         if not d:
             d = getDate(date, config.DATE_STAMP)
         if x > d:
@@ -1030,6 +1470,27 @@ def local_GetDeliveryDate(**kw):
             continue
         date = daydelta(date, 1)
         d = None
+
+    if config.IsCheckSuspendedDates and suspended_dates:
+        delivery_companies = kw.get('delivery_companies')
+        package_types = kw.get('package_types')
+        if delivery_companies and package_types:
+            for x, c, p in suspended_dates:
+                if (not c or delivery_companies.intersection(set(c))) and (not p or package_types.intersection(set(p))):
+                    d = daydelta(getDate(x, format=config.DATE_STAMP, is_date=True), -1)
+                    if today < d and date >= d:
+                        raise ProcessException(
+                            'Date Suspended is checked: %s [local_GetDeliveryDate]!' % x, 
+                            status=STATUS_ON_SUSPENDED
+                            )
+
+        if config.IsDebug:
+            config.print_to(None, '%s: delivery_companies:%s, package_types:%s, date:%s' % (
+                kw.get('filename'), 
+                delivery_companies, 
+                package_types,
+                date,
+                ))
 
     format = kw.get('format') or config.UTC_EASY_TIMESTAMP
     return getDate(date, format=format)
@@ -1047,11 +1508,16 @@ def local_SetDeliveryDate(node, order, saveback):
     if LOCAL_IS_MAX_DELIVERY_DATE or not delivery_date:
         size = order is not None and order.fqty
         filetype = order.filetype
+
+        # Collect data from object
+        package_type = checkSetExists(saveback, 'PackageType', node=node)
+        delivery_company = checkSetExists(saveback, 'DeliveryCompany', node=node)
+
         new_delivery_date = local_GetDeliveryDate(size=size, format=format, 
-            is_fast=local_IsFastFile(order),
+            is_fastfile=local_IsFastFile(order),
             is_with_indigo=local_WithIndigo(order, filetype=filetype),
             is_with_loyalty=local_WithLoyalty(order),
-            package_type=getTag(node, 'PackageType')
+            package_type=package_type,
             )
         saveback[LOCAL_DELIVERY_DATE] = delivery_date and max_date(delivery_date, new_delivery_date) or new_delivery_date
         delivery_date = saveback[LOCAL_DELIVERY_DATE]
@@ -1074,49 +1540,6 @@ def local_SetExpireDate(node):
     expire_date = '%s%s' % (x[1], x[0])
     return updateTag(node, 'ExpireDate', expire_date)
 
-def local_IsFastFile(order):
-    """
-        Срочный заказ
-    """
-    return 'FAST' in order.filename
-
-def local_IsAddrDelivery(node):
-    """
-        Карты с адресной доставкой (справочник не проверяется)
-    """
-    return getTag(node, 'DeliveryCanalCode') == 'PR01'
-
-def local_IsNamedType(node):
-    """
-        Именные карты
-    """
-    return getTag(node, 'ProductDesign') not in ('40599115', '40599216', '40599219', '40599220', '220077044', '220077045',)
-
-def local_WithCardHolder(node):
-    """
-        Признак "С картходером"
-    """
-    return getTag(node, 'ProductDesign') in ('220077045',) or local_IsNamedType(node) and local_IsAddrDelivery(node)
-
-def local_WithIndigo(order, **kw):
-    """
-        Индивидуальный дизайн INDIGO
-    """
-    words = order.filename.split('_')[4:]
-    filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
-    plastic_types = filetype['plastic_types']
-
-    for key in plastic_types:
-        if plastic_types[key].get('indigo') and key in words:
-            return True
-    return False
-
-def local_WithLoyalty(order, **kw):
-    """
-        Карта лояльности
-    """
-    return order.filetype in ('PostBank_X5',) and True or False
-
 def local_PackageNumberGroups(logger, **kw):
     """
         Данные для формирования индекса партии BatchIndex
@@ -1138,3 +1561,200 @@ def local_PackageNumberGroups(logger, **kw):
         return []
 
     return cursor
+
+def local_GetIssueNumber(node, order, connect, logger, saveback, **kw):
+    """
+        Номер тиража
+    """
+    filetype = kw.get('filetype') or order.filetype
+    plastic_type = getTag(node, 'PlasticType')
+
+    mode = 'IssueNumber'
+
+    if mode not in saveback:
+        saveback[mode] = {}
+
+    if plastic_type in saveback[mode]:
+        return saveback[mode][plastic_type]
+
+    params = (filetype, 'PlasticType: %s' % plastic_type,)
+
+    cursor, is_error = connect(SQL[mode]['get'], params, with_commit=False, with_result=True, raise_error=True)
+
+    if is_error or not cursor or len(cursor) < 1:
+        x = '' #raise ProcessException('SQL Error[get], mode:%s, cursor:%s' % (mode, cursor))
+    else:
+        x = len(cursor[0]) > 0 and cursor[0][0] or ''
+
+    saveback[mode][plastic_type] = x
+
+    return x
+
+##  ----------------------------
+##  ПРИКЛАДНЫЕ НАСТРОЙКИ ДИЗАЙНА
+##  ----------------------------
+
+def local_IsCyberLab(order):
+    """
+        Проект "КИБЕРЛАБ"
+    """
+    return order.filetype == FILETYPE_POSTBANK_CYBERLAB['filetype']
+
+def local_UpdateCyberLabNumber(node, order, connect, logger, saveback, **kw):
+    """
+        Проект "КИБЕРЛАБ". Генерация номера участника ФКС (RESF).
+
+        Аргументы:
+            node                -- ET.Element, узел тега текущей записи заказа, тег <FileBody_Record>
+            order               -- Order, заказ
+            connect             -- func, функция для работы с базой данных
+            logger              -- func, функция печати журнала
+            saveback            -- dict, сохраненные данные обработки на предыдущих итерациях
+
+        Ключевые аргументы:
+            filename            -- str, имя формируемого файла-заказа
+            filetype            -- str, тип файла
+            PAN                 -- str, PAN
+    """
+    orderfile = kw.get('filename') or order.filename
+    filetype = kw.get('filetype') or order.filetype
+    
+    recno = getTag(node, 'FileRecNo')
+
+    mode = 'CyberLabNumber'
+
+    params = [1, orderfile, recno, kw.get('PAN'), pymssql.output(str)]
+
+    if config.IsDeepDebug:
+        config.print_to(None, '%s, params:%s' % (mode, params[:4]))
+
+    cursor, is_error = connect(SQL[mode]['register'], params, with_commit=False, with_result=True, callproc=True, raise_error=True)
+
+    if is_error or not cursor or len(cursor) < 4:
+        raise ProcessException('SQL Error[register], mode:%s, cursor:%s' % (mode, cursor))
+
+    # Сквозной номер участника
+    x = cursor[4].split(':')
+    tid, number = x[0], int(x[1] or 0)
+
+    if config.IsDebug:
+        config.print_to(None, '%s:%s, params:%s' % (mode, x, params[:4]))
+
+    if number == 0:
+        raise ProcessException('SQL Error[number over limit], mode:%s, cursor:%s' % (mode, cursor))
+
+    return 'RESF 1%06d' % number
+
+##  --------------------------------
+##  ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ ДИЗАЙНА
+##  --------------------------------
+
+def local_IsFastFile(order):
+    """
+        Срочный заказ
+    """
+    return 'FAST' in order.filename
+
+def local_IsAddrDelivery(node):
+    """
+        Карты с адресной доставкой (справочник не проверяется)
+    """
+    return getTag(node, 'DeliveryCanalCode') == 'PR01'
+
+def local_IsNamedType(node):
+    """
+        Именные карты
+    """
+    return getTag(node, 'ProductDesign') not in FILETYPE_POSTBANK_NONAME_PRODUCTS
+
+def local_IsDeliveryWithDate(node, delivery_company=None):
+    """
+        Персофайлы с контролем даты отгрузки
+    """
+    return (delivery_company or getTag(node, 'DeliveryCompany')) in LOCAL_DELIVERY_WITH_DATE
+
+def local_IsDeliveryWithBarcode(node, delivery_company=None):
+    """
+        Персофайлы с ШПИ
+    """
+    return (delivery_company or getTag(node, 'DeliveryCompany')) in LOCAL_DELIVERY_WITH_BARCODE
+
+def local_IsDeliveryWithPostOnline(node, delivery_company=None):
+    """
+        Персофайлы с регистрацией отправлений
+    """
+    return (delivery_company or getTag(node, 'DeliveryCompany')) in LOCAL_DELIVERY_WITH_POSTONLINE
+
+def local_WithBarcode(product_design, **kw):
+    """
+        Признак "ШПИ"
+    """
+    return _get_product_param(kw.get('filetype'), product_design, 'no_barcode', default=0) == 0
+
+def local_WithCardHolder(node):
+    """
+        Признак "С картходером"
+    """
+    return getTag(node, 'ProductDesign') in FILETYPE_POSTBANK_WITHCARDHOLDER_PRODUCTS or local_IsNamedType(node) and local_IsAddrDelivery(node)
+
+def local_WithIndigo(order, **kw):
+    """
+        Индивидуальный дизайн INDIGO
+    """
+    words = order.filename.split('_')[4:]
+    filetype = local_filetypes.get(kw.get('filetype')) or DEFAULT_FILETYPE
+    plastic_types = filetype['plastic_types']
+
+    for key in plastic_types:
+        if plastic_types[key].get('indigo') and key in words:
+            return True
+    return False
+
+def local_WithLoyalty(order, **kw):
+    """
+        Карта лояльности
+    """
+    return order.filetype in ('PostBank_X5',)
+
+def local_CaseCover(node):
+    """
+        Признак "Конверт ОВПО"
+    """
+    return getTag(node, 'ProductDesign') in FILETYPE_POSTBANK_CASECOVER_PRODUCTS
+
+def local_WithEnclosure(product_design, **kw):
+    """
+        Использовать "Вложение"
+    """
+    return product_design in FILETYPE_POSTBANK_GREENWORLD_PRODUCTS and kw.get('is_named_type') and 'GREENWORLD' or ''
+
+def local_PlasticFrontPrintType(product_design, **kw):
+    """
+        Тип печати ЛИЦО
+    """
+    return _get_product_param(kw.get('filetype'), product_design, 'front_print') or 'EMBOSSING'
+
+def local_PlasticBackPrintType(product_design, **kw):
+    """
+        Тип печати ОБОРОТ
+    """
+    return _get_product_param(kw.get('filetype'), product_design, 'back_print') or 'INDENT'
+
+def local_CaseEnvelope(product_design, **kw):
+    """
+        Конверт к листовке
+    """
+    return _get_product_param(kw.get('filetype'), product_design, 'envelope')
+
+def local_CaseLeaflet(product_design, **kw):
+    """
+        Бланк листовки
+    """
+    return _get_product_param(kw.get('filetype'), product_design, 'leaflet')
+
+def local_CheckDesignIsInvalid(product_design, **kw):
+    """
+        Дополнительный входной контроль параметров дизайна
+    """
+    if product_design in ('220077012',) and not kw.get('is_named_type'):
+        raise ProcessException('Invalid Design:[%s]' % product_design)

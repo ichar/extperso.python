@@ -7,10 +7,10 @@ default_unicode        = 'utf-8'
 default_encoding       = 'cp1251'
 default_iso            = 'ISO-8859-1'
 
-cwd = "C:/apps/perso"
+cwd = "G:/apps/perso"
 config = "perso.config.default"
-command = "CSD::PostBank_X5::46-0-0::[everything,ext.order_generate.postbank.change_delivery_date,\'24.10.2019\',220658]"
-
+command = "CSD::PostBank_ID::21-0-0::[everything,ext.order_generate.postbank.change_delivery_date,\'21.10.2019\',311001]"
+"""
 # 1. Popen call
 args = [
     #"C:/apps/perso/run.exe",
@@ -27,11 +27,11 @@ proc.wait()
 res = proc.communicate()  # tuple('stdout', 'stderr')
 
 print(proc.returncode)
-
-print(res[1].decode(default_print_encoding))
+if proc.returncode:
+    print(res[1].decode(default_print_encoding))
 print('result:', res[0].decode(default_print_encoding))
-
 """
+
 args = [
     os.path.join(cwd, "run.exe"),
     cwd,
@@ -42,7 +42,7 @@ args = [
 code = subprocess.call(args)
 
 print('code:', code)
-"""
+
 """
 # 2. Unix only
 import os

@@ -27,7 +27,7 @@ reload             :: 1
 # Scenario parameters
 # -------------------
 # PostBank merge interval
-postbank_merge     :: 12:00-17:15
+postbank_merge     :: 20:00-23:15
 # Каталог выгрузки документов по отправлениям Почта России
 postbank_unload_to :: C:/PersoStation/Inkass/InputData/PostBank/postonline
 # Почта России F103

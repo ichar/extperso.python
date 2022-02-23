@@ -17,3 +17,6 @@ MSG_ERROR_RECORD_HEADER = 'Порядковый номер записи в файле'
 ##  ==================
 
 READY_DATE = 'READY_DATE'
+TOTAL      = 'Total'
+DISABLED   = 'disabled'
+EMPTY_NODE = 'empty_node'

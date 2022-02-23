@@ -5,14 +5,14 @@
 # --------------------- #
 
 __all__ = [
-    'status_to', 'status_postonline_to', 'tags', 'custom_step1', 'custom_step2', 'custom_postonline', 
+    'status_to', 'status_error', 'status_postonline_to', 'tags', 'custom_step1', 'custom_step2', 'custom_postonline', 
     'change_delivery_date'
     ]
 
 import re
 
 from config import (
-     IsDebug, IsDeepDebug, IsDisableOutput, IsPrintExceptions,
+     IsDebug, IsDeepDebug, IsTrace, IsDisableOutput, IsPrintExceptions, IsCheckF103Sent,
      default_print_encoding, default_unicode, default_encoding, default_iso, cr,
      LOCAL_EASY_DATESTAMP, UTC_FULL_TIMESTAMP, UTC_EASY_TIMESTAMP, DATE_STAMP,
      print_to, print_exception,
@@ -20,10 +20,10 @@ from config import (
 )
 
 from app.core import ProcessException, CustomException, Order
-from app.types.constants import READY_DATE
+from app.types.constants import READY_DATE, TOTAL, DISABLED, EMPTY_NODE
 from app.types.statuses import *
 from app.srvlib import *
-from app.utils import getDate, getToday, Capitalize, isIterable, sortedDict
+from app.utils import getDate, getToday, Capitalize, isIterable, sortedDict, sjoin, getDefaultValueByKey
 
 from ..defaults import *
 from ..filetypes.postbank import *
@@ -46,6 +46,9 @@ from ..xmllib import *
 IsErrorPostOnlineFixed = False
 
 LOCAL_ORDERFILES = 'orderfiles'
+LOCAL_BATCHES_TAG = 'PostOnlineBatches'
+LOCAL_ORDERS_TAG = 'PostOnlineOrders'
+LOCAL_CHANGE_DELIVERY_DATE = 'change_delivery_date'
 
 # ------------------------- #
 
@@ -55,6 +58,12 @@ def status_to(order):
     """
     return local_IsFastFile(order) and STATUS_FILTER_VERIFIED or STATUS_ON_ORDER_WAIT
 
+def status_error(order):
+    """
+        Статус ошибки (to)
+    """
+    return order.status_error or STATUS_REJECTED_INVALID
+
 def status_postonline_to(order):
     """
         Статус регистрации почтовых отправлений (to)
@@ -62,19 +71,21 @@ def status_postonline_to(order):
     # Тип файла
     filetype = order.filetype
     is_with_indigo = local_WithIndigo(order, filetype=filetype)
-    return ('$P' in order.filename or is_with_indigo) and STATUS_POST_ONLINE_STARTED or STATUS_POST_ONLINE_FINISHED
+    #return ('$P' in order.filename or is_with_indigo) and STATUS_POST_ONLINE_STARTED or STATUS_POST_ONLINE_FINISHED
+    return STATUS_ON_DELIVERY_DONE
 
 def tags():
     """
         Теги записей для генерации контента
     """
-    return ('FileBody_Record', 'ProcessInfo',)
+    return ('FileInfo', 'FileBody_Record', 'ProcessInfo',)
 
 # ========================= #
 
 def _make_batch_groups(logger, **kw):
     """
-        Привязка отгрузочного адреса (пакета отгрузки в филиал) к индексу партии
+        Привязка отгрузочного адреса (пакета отгрузки в филиал) к индексу партии.
+        Связано с ограничением предельного размера партии 500 карт.
     """
     groups = {}
 
@@ -107,6 +118,35 @@ def _make_batch_groups(logger, **kw):
 
     return groups
 
+def _check_package_size(node, order, **kw):
+    """
+        Параметры, связанные с количеством карт в файле
+    """
+    package_type = kw.get('package_type')
+    delivery_company = kw.get('delivery_company')
+    is_named_type = kw.get('is_named_type')
+
+    step = kw.get('step')
+
+    # Максимальное (предельное) кол-во карт/пломб в упаковках
+    stamp_size, package_size = local_GetPackageSize(node, order)
+
+    # Материалы к упаковке, вложения
+    if package_type == 'C1':
+        updateTag(node, 'CASE_PACKAGE', 'C1-B%s-%s' % (delivery_company, str(package_size)))
+
+    elif package_type == 'C2':
+        updateTag(node, 'CASE_PACKAGE', 'C2-B%s' % delivery_company)
+
+    elif package_type == 'C3':
+        updateTag(node, 'CASE_PACKAGE', '')
+
+    else:
+        raise ProcessException('Undefined package_type [custom_step%s]!' % step)
+
+    updateTag(node, 'StampSize', stamp_size)
+    updateTag(node, 'PackageSize', package_size)
+
 def custom_step1(n, node, logger, saveback, **kw):
     """
         Генерация контента (FAST-файлы+индивидуальный дизайн и общие поля, шаг 1)
@@ -114,15 +154,26 @@ def custom_step1(n, node, logger, saveback, **kw):
     order = kw.get('order')
     connect = kw.get('connect')
 
+    # Наименование банка-клиента
+    client = CLIENT_NAME[1]
+    # Имя входящего файла
+    filename = order.filename
     # Тип файла
     filetype = order.filetype
+
+    if node.tag == 'FileInfo':
+        print_log_space('FileID:%s = custom_step1' % order.id)
+        return
 
     if node.tag == 'ProcessInfo':
         saveback[READY_DATE] = local_GetDeliveryDate(
             size=n-1, 
             is_fastfile=local_IsFastFile(order), 
             is_with_indigo=local_WithIndigo(order, filetype=filetype),
-            is_with_loyalty=local_WithLoyalty(order)
+            is_with_loyalty=local_WithLoyalty(order),
+            delivery_companies=saveback['DeliveryCompany'],
+            package_types=saveback['PackageType'],
+            filename=filename,
             )
         return
 
@@ -132,14 +183,10 @@ def custom_step1(n, node, logger, saveback, **kw):
     if not (connect and callable(connect)):
         raise ProcessException('Uncallable connect [step1]!')
 
-    # ------------
-    # Данные файла
-    # ------------
+    # -----------------
+    # Данные персофайла
+    # -----------------
 
-    # Наименование банка-клиента
-    client = CLIENT_NAME[1]
-    # Имя входящего файла
-    filename = order.filename
     # Порядковый номер карты в файле
     recno = getTag(node, 'FileRecNo')
     # PAN
@@ -155,7 +202,7 @@ def custom_step1(n, node, logger, saveback, **kw):
     track1_cardholder_name = getTag(node, 'Track1CardholderName')
     # Код дизайна пластика
     product_design = getTag(node, 'ProductDesign')
-    # Тип пластика, данные MSDP, префикс дизайна, тип чипа, наименование пластика
+    # Тип пластика, данные MSDP, данные SDC, префикс дизайна, тип чипа, наименование пластика
     plastic_type, service_code, pvki, design_prefix, pay_system, plastic_name = local_GetPlasticInfo(product_design, filetype=filetype)
     # ФИО владельца карты
     FIO = FMT_ParseFIO(node, 'CardholderFIO')
@@ -184,12 +231,22 @@ def custom_step1(n, node, logger, saveback, **kw):
     is_fastfile = local_IsFastFile(order)
     # Индивидуальный дизайн
     is_with_indigo = local_WithIndigo(order, filetype=filetype)
+    # Печать ШПИ
+    is_with_barcode = local_WithBarcode(product_design, filetype=filetype)
     # Карта лояльности
     is_with_loyalty = local_WithLoyalty(order)
+    # Конверт ОВПО
+    is_case_cover = local_CaseCover(node)
 
-    # ------------------
-    # Данные справочника
-    # ------------------
+    # ------------------------
+    # ВХОДНОЙ КОНТРОЛЬ ДИЗАЙНА
+    # ------------------------
+
+    local_CheckDesignIsInvalid(product_design, is_named_type=is_named_type)
+
+    # ---------------------------------
+    # Данные справочника филиалов Банка
+    # ---------------------------------
 
     mode = 'DeliveryRef'
 
@@ -240,6 +297,10 @@ def custom_step1(n, node, logger, saveback, **kw):
     setBooleanTag(node, 'DUMPBANK_FLAG', 1)
     # Печать ПИН-конвертов
     setBooleanTag(node, 'PCode', pCode)
+    # Тип печати на лицевой стороне
+    updateTag(node, 'PrintTypeFront', local_PlasticFrontPrintType(product_design, filetype=filetype))
+    # Тип печати на оборотной стороне
+    updateTag(node, 'PrintTypeBack', local_PlasticBackPrintType(product_design, filetype=filetype))
 
     # ---------------
     # Штрих-код карты
@@ -252,20 +313,21 @@ def custom_step1(n, node, logger, saveback, **kw):
 
     card_barcode = card_barcode_control = None
 
-    if is_with_loyalty:
-        card_barcode_control = ean
-        card_barcode = card_barcode_control[:-1]
+    if is_with_barcode:
+        if is_with_loyalty:
+            card_barcode_control = ean
+            card_barcode = card_barcode_control[:-1]
 
-        design_prefix = card_barcode[:3]
-    else:
-        card_barcode = '%3s%9s' % (design_prefix, PAN[6:15])
-        card_barcode_control = EAN_13Digit(card_barcode)
+            design_prefix = card_barcode[:3]
+        else:
+            card_barcode = '%3s%9s' % (design_prefix, PAN[6:15])
+            card_barcode_control = EAN_13Digit(card_barcode)
 
-        # Номер лояльности
-        updateTag(node, 'LoyaltyNumber', '')
+            # Номер лояльности
+            updateTag(node, 'LoyaltyNumber', '')
 
-    if len(card_barcode.strip()) != 12:
-        raise ProcessException('Invalid card barcode:[%s]' % card_barcode)
+        if len(card_barcode.strip()) != 12:
+            raise ProcessException('Invalid card barcode:[%s]' % card_barcode)
 
     # ШК без контрольной цифры (12 цифр)
     updateTag(node, 'EANN', card_barcode)
@@ -311,7 +373,7 @@ def custom_step1(n, node, logger, saveback, **kw):
         delivery_type = ''
         delivery_zone = ''
         receiver_name = getTag(node, 'CardholderFIO')
-        receiver_address = getTag(node, 'CardholderAddress')
+        receiver_address = FMT_ParseAddress(getTag(node, 'CardholderAddress'))
         receiver_contact = ''
         receiver_phone = ''
 
@@ -342,12 +404,18 @@ def custom_step1(n, node, logger, saveback, **kw):
     # ------------------
 
     # Вид упаковки
-    package_type = None
+    package_type = is_addr_delivery and 'C3' or with_cardholder and 'C2' or 'C1'
+    """
     if is_named_type:
         package_type = is_addr_delivery and (is_with_indigo and 'C3' or 'C2') or 'C1'
     else:
         package_type = with_cardholder and 'C2' or 'C1'
+    """
     updateTag(node, 'PackageType', package_type)
+
+    # Условное обозначение транспортной компании
+    delivery_company = local_GetDeliveryCompany(delivery_type)
+    updateTag(node, 'DeliveryCompany', delivery_company)
 
     # Дата отгрузки
     delivery_date = local_SetDeliveryDate(node, order, saveback)
@@ -357,43 +425,30 @@ def custom_step1(n, node, logger, saveback, **kw):
     if is_fastfile or is_with_indigo:
         stamp_code, stamp_index, package_code, post_code = local_UpdateStampCode(node, order, connect, logger, saveback, filetype=filetype)
 
-    # Условное обозначение транспортной компании
-    delivery_company = local_GetDeliveryCompany(delivery_type)
-    updateTag(node, 'DeliveryCompany', delivery_company)
-
     # Максимальное (предельное) кол-во карт/пломб в упаковках
-    stamp_size, package_size = local_GetPackageSize(node, order)
+    _check_package_size(node, order, package_type=package_type, delivery_company=delivery_company, is_named_type=is_named_type, step=1)
 
     # Материалы к упаковке, вложения
     if package_type == 'C1':
-        updateTag(node, 'CASE_BOX', 'C1-A1')
+        updateTag(node, 'CASE_BOX', is_named_type and not is_addr_delivery and 'C1-A2' or 'C1-A1')
         updateTag(node, 'CASE_COVER', '')
-        updateTag(node, 'CASE_ENCLOSURE', is_named_type and product_design == '40599114' and 'GREENWORLD' or '')
+        updateTag(node, 'CASE_ENCLOSURE', local_WithEnclosure(product_design, is_named_type=is_named_type))
         updateTag(node, 'CASE_ENVELOPE', '')
         updateTag(node, 'CASE_LEAFLET', '')
-        updateTag(node, 'CASE_PACKAGE', 'C1-B%s-%s' % (delivery_company, str(package_size)))
 
     elif package_type == 'C2':
         updateTag(node, 'CASE_BOX', is_addr_delivery and 'C2-LETTER' or 'C2-BOX')
-        updateTag(node, 'CASE_COVER', is_with_loyalty and 'C2-OVPO' or '')
+        updateTag(node, 'CASE_COVER', is_case_cover and 'C2-OVPO' or '')
         updateTag(node, 'CASE_ENCLOSURE', '')
-        updateTag(node, 'CASE_ENVELOPE', is_named_type and 'C2-COVER2' or 'C2-COVER1')
-        updateTag(node, 'CASE_LEAFLET', is_named_type and 'C2-I' or 'C2-N')
-        updateTag(node, 'CASE_PACKAGE', not is_named_type and ('C2-B%s' % delivery_company) or '')
+        updateTag(node, 'CASE_ENVELOPE', local_CaseEnvelope(product_design, filetype=filetype) or is_named_type and 'C2-COVER2' or 'C2-COVER1')
+        updateTag(node, 'CASE_LEAFLET', local_CaseLeaflet(product_design, filetype=filetype) or is_named_type and 'C2-I' or 'C2-N')
 
-    elif package_type == 'C3' and is_named_type and is_addr_delivery and is_with_indigo:
+    elif package_type == 'C3':
         updateTag(node, 'CASE_BOX', 'C3-LETTER')
         updateTag(node, 'CASE_COVER', '')
         updateTag(node, 'CASE_ENCLOSURE', '')
         updateTag(node, 'CASE_ENVELOPE', 'C3-COVER2')
         updateTag(node, 'CASE_LEAFLET', 'C3-I')
-        updateTag(node, 'CASE_PACKAGE', '')
-
-    else:
-        raise ProcessException('Undefined package_type in %s [step1]!' % filename)
-
-    updateTag(node, 'StampSize', stamp_size)
-    updateTag(node, 'PackageSize', package_size)
 
     # ----------------------
     # Служебные/опциональные
@@ -403,10 +458,21 @@ def custom_step1(n, node, logger, saveback, **kw):
     updateTag(node, 'ID_VSP', ID_VSP)
     # Параметры MSDP
     updateTag(node, 'ServiceCode', service_code)
-    # Индент-печать
-    setBooleanTag(node, 'IsIndent', 0)
     # Track3
     updateTag(node, 'Track3', '')
+
+    is_indent = 0
+
+    if local_IsCyberLab(order):
+        output = local_UpdateCyberLabNumber(node, order, connect, logger, saveback, PAN=PAN)
+    
+        # 4-я строка на обороте
+        updateTag(node, 'Organization', output)
+        updateTag(node, 'LoyaltyNumber', output.split(' ')[1])
+        is_indent = 1
+
+    # Индент-печать
+    setBooleanTag(node, 'IsIndent', is_indent)
 
     # Сортировка в партиях
     if LOCAL_IS_PLASTIC_BATCHSORT:
@@ -446,6 +512,9 @@ def custom_step1(n, node, logger, saveback, **kw):
     # INC RECORD OUTPUT
     # -----------------
 
+    if TID:
+        receiver_address = FMT_ParseDefaultAddress(receiver_address)
+
     GEN_INC_Record(node, [
         ('FileRecNo', recno,),
         ('Client', client,),
@@ -484,8 +553,8 @@ def custom_step1(n, node, logger, saveback, **kw):
         PAN,
         product_design,
         delivery_date,
-        delivery_company == 'P' and getTag(node, 'PostBarcode') or '',
-        card_barcode,
+        local_IsDeliveryWithBarcode(node, delivery_company=delivery_company) and getTag(node, 'PostBarcode') or '',
+        card_barcode or '',
     ], ';')
 
     # ------------------
@@ -493,9 +562,9 @@ def custom_step1(n, node, logger, saveback, **kw):
     # ------------------
 
     address = local_ParseAddress(node, 'CardholderAddress')
-    root = local_GetAREPRecordName(order)
+    root = local_GetAREPRecordName(order, filetype, product_design, is_addr_delivery=is_addr_delivery)
 
-    if package_type in ('C2',) and is_with_loyalty:
+    if package_type in ('C2',) and (not is_named_type or is_with_loyalty):
         #
         # Листовки: Неименная карта лояльности КЕЙС-2
         #
@@ -514,7 +583,7 @@ def custom_step1(n, node, logger, saveback, **kw):
         #
         addrs = FMT_Limitstrlist([address.get(x) or '' 
             for x in ('district', 'city', 'town', 'street', 'house', 'building', 'flat')],
-            limit=40, comma=', ', max_items=4)
+                limit=40, comma=', ', max_items=4)
 
         GEN_AREP_Record(node, [
             ('PANMSK', FMT_PanMask_6_4(PAN),),
@@ -557,8 +626,8 @@ def custom_step1(n, node, logger, saveback, **kw):
         cursor, is_error = connect(SQL[mode]['fix'], (file_id, recno, TID), with_commit=False)
 
         if is_error:
-            msg = 'Loaylty Fix: %s Unexpected error, TID:%s, LoyaltyNumber:%s, PAN:%s recno:%s' % (
-                filename, TID, loyalty_number, pan_masked, recno)
+            msg = 'Loaylty Fix: Unexpected error, TID:%s, LoyaltyNumber:%s, PAN:%s recno:%s' % (
+                TID, loyalty_number, pan_masked, recno)
             print_to(None, 'ERROR:'+repr(cursor))
             raise ProcessException(msg)
 
@@ -571,33 +640,54 @@ def custom_step2(n, node, logger, saveback, **kw):
     order = kw.get('order')
     connect = kw.get('connect')
     phase = kw.get('phase')
+
+    saveback[EMPTY_NODE] = False
+
+    # Имя входящего файла
+    filename = order.filename
+
     #
     # Установить дату отгрузки в зависимости от суммарного объема персофайлов
     #
     if phase == 1:
         ready_date = saveback and saveback.get(READY_DATE)
+        disabled = saveback and saveback.get(DISABLED) or 0
+
+        if disabled:
+            logger('order_generate[custom_step2]: %s total disabled[%s]' % (filename, disabled), force=True)
+
         if ready_date:
             date = getDate(getDate(ready_date, UTC_EASY_TIMESTAMP, is_date=True), LOCAL_DATESTAMP)
             if date != saveback.get(LOCAL_DELIVERY_DATE):
                 params = {'date' : date}
-                change_delivery_date(n, node, logger, saveback, order=order, params=params, force=False)
+                change_delivery_date(n-disabled-2, node, logger, saveback, order=order, params=params, force=False)
             else:
                 return -1
         return
     #
     # Рассчитать суммарный объем персофайлов в потоке и дату отгрузки
     #
-    if node.tag == 'ProcessInfo' and phase == 0:
-        engine = kw.get('engine')
-        size = 0
-        if engine is not None:
-            orderfiles = saveback.get(LOCAL_ORDERFILES) or []
-            for orderfile in orderfiles:
-                order = Order(orderfile)
-                order.get_original(engine)
-                size += order.fqty
-        saveback[READY_DATE] = local_GetDeliveryDate(size=size or n-1)
-        return
+    if phase == 0:
+        if node.tag == 'FileInfo':
+            print_log_space('FileID:%s = custom_step2' % order.id)
+
+            if not DISABLED in saveback:
+                saveback[DISABLED] = 0
+
+        if node.tag == 'ProcessInfo':
+            engine = kw.get('engine')
+            size = 0
+            disabled = saveback.get(DISABLED) or 0
+            if engine is not None:
+                orderfiles = saveback.get(LOCAL_ORDERFILES) or []
+                for orderfile in orderfiles:
+                    o = Order(orderfile)
+                    o.get_original(engine)
+                    size += o.fqty
+            if disabled:
+                size -= disabled
+            saveback[READY_DATE] = local_GetDeliveryDate(size=size or n-2)
+            return
 
     if node.tag == 'FileInfo':
         saveback[LOCAL_ORDERFILES] = []
@@ -611,6 +701,9 @@ def custom_step2(n, node, logger, saveback, **kw):
 
     # Имя входящего персофайла
     orderfile = getTag(node, 'ORDER_FILE')
+
+    if IsDeepDebug and IsTrace:
+        print_to(None, 'Step2:%s' % orderfile)
 
     # Сформировать общий список входящих персофайлов потока
     if orderfile not in saveback[LOCAL_ORDERFILES]:
@@ -638,14 +731,37 @@ def custom_step2(n, node, logger, saveback, **kw):
     is_named_type = local_IsNamedType(node)
     # Карты с адресной доставкой
     is_addr_delivery = local_IsAddrDelivery(node)
+    # Печать ШПИ
+    is_with_barcode = local_WithBarcode(product_design, filetype=filetype)
     # Карта лояльности
     is_with_loyalty = local_WithLoyalty(order)
     # Группа карт
     card_group = getTag(node, 'CardGroup')
 
+    # ------------------------
+    # ВХОДНОЙ КОНТРОЛЬ ДИЗАЙНА
+    # ------------------------
+
+    local_CheckDesignIsInvalid(product_design, is_named_type=is_named_type)
+
+    # ------------------
+    # БЛОКИРОВКА ДИЗАЙНА
+    # ------------------
+
+    if local_IsPlasticDisabled(product_design):
+        saveback[EMPTY_NODE] = True
+        logger('order_generate[custom_step2]: %s design is disabled[%s] ID:%s, recno:[%s]' % (
+            filename, product_design, getTag(node, LOCAL_ID_TAG), recno), 
+            is_warning=True)
+        saveback[DISABLED] += 1
+        return
+
     # -------------------------------
     # Генерация дополнительных данных
     # -------------------------------
+
+    # Максимальное (предельное) кол-во карт/пломб в упаковках
+    _check_package_size(node, order, package_type=package_type, delivery_company=delivery_company, is_named_type=is_named_type, step=2)
 
     # Дата доставки/отгрузки
     delivery_date = local_SetDeliveryDate(node, order, saveback)
@@ -701,7 +817,7 @@ def custom_step2(n, node, logger, saveback, **kw):
     # ------------------
 
     if package_type in ('C2','C3'):
-        root = local_GetAREPRecordName(order)
+        root = local_GetAREPRecordName(order, filetype, product_design, is_addr_delivery=is_addr_delivery)
         #
         # Листовки: КЕЙС-2/3
         #
@@ -720,13 +836,19 @@ def custom_step3(n, node, logger, saveback, **kw):
         saveback['groups'] = _make_batch_groups(logger, **kw)
         return
 
+    # Имя входящего персофайла
+    orderfile = getTag(node, 'ORDER_FILE')
+
     groups = saveback.get('groups')
+
+    if IsDeepDebug and IsTrace:
+        print_to(None, 'Step3:%s groups:%s' % (orderfile, groups))
 
     if node.tag != 'FileBody_Record' or not groups:
         return
     
     package_code = getINCRecordValue(node, 'PackageCode')
-    batch_index = '%03d' % groups.get(int(package_code[-5:]))
+    batch_index = '%03d' % (package_code and groups.get(int(package_code[-5:])) or 0)
 
     updateTag(node, 'BatchIndex', batch_index)
 
@@ -740,16 +862,32 @@ def _get_batch_params(order, service):
 
 def custom_postonline(n, node, logger, saveback, **kw):
     """
-        ПОЧТА РОССИИ ОНЛАЙН
+        ПОЧТА РОССИИ ОНЛАЙН (РЕГИСТРАЦИЯ ОТПРАВЛЕНИЙ).
+        
+        Двухфазная (двупроходная) процедура регистрации отправлений.
+            phase : 0 -- подготовка данных и регистрация (packages)
+                    1 -- запись данных в тегах
+
+        Параметры отправления:
+            PostOrderID -- ID отправления
+            PostBarcode -- код ШПИ
+            PostRate    -- стоимость отправления (цена)
     """
     order = kw.get('order')
     service = kw.get('service')
     phase = kw.get('phase')
 
+    # Имя файла
     filename = order.filename
+    # Тип файла
+    filetype = order.filetype
+
+    recno = None
 
     if phase == 0:
         if node.tag == 'FileInfo':
+            print_log_space('FileID:%s = custom_postonline' % order.id)
+
             # Почтовые отправления
             saveback['packages'] = sortedDict()
             # Номера партий
@@ -768,6 +906,9 @@ def custom_postonline(n, node, logger, saveback, **kw):
 
             if not package:
                 return
+    
+            # Код дизайна пластика
+            product_design = getTag(node, 'ProductDesign')
 
             ids, props, attrs, data = package
             card_type, case_box, case_enclosure, package_code, package_type, package_size, is_named_type, is_addr_delivery = props
@@ -793,7 +934,7 @@ def custom_postonline(n, node, logger, saveback, **kw):
             # ------------------
 
             if package_type in ('C2','C3'):
-                root = local_GetAREPRecordName(order)
+                root = local_GetAREPRecordName(order, filetype, product_design, is_addr_delivery=is_addr_delivery)
                 #
                 # Листовки: КЕЙС-2/3
                 #
@@ -817,9 +958,23 @@ def custom_postonline(n, node, logger, saveback, **kw):
     if node.tag in ('FileBody_Record',):
         # Транспортная компания
         delivery_company = getTag(node, 'DeliveryCompany')
-
-        if delivery_company != 'P':
+        if not local_IsDeliveryWithPostOnline(node, delivery_company=delivery_company):
             return
+
+        # Дизайн продукта
+        product_design = getTag(node, 'ProductDesign')
+
+        # ------------------
+        # БЛОКИРОВКА ДИЗАЙНА
+        # ------------------
+
+        if local_IsPlasticDisabled(product_design, filetype=filetype):
+            return
+
+        # Регистрировать только новые(пустые) отправления
+        if LOCAL_CHECK_POSTONLINE_FREE:
+            if getTag(node, 'PostBarcode'):
+                return
 
         # Номер записи
         recno = getTag(node, 'FileRecNo')
@@ -866,6 +1021,9 @@ def custom_postonline(n, node, logger, saveback, **kw):
                     'phone'    : getTag(node, 'ReceiverPhone'),
                     'number'   : '%s:%s:%s' % (getTag(node, 'BRANCHDELIVERY'), package_code, order.id),
                     'comment'  : getTag(node, 'ORDER_FILE'),
+
+                    'delivery_canal_code' : getTag(node, 'DeliveryCanalCode'),
+                    'delivery_company' : delivery_company,
                 },
                 None,
             ]
@@ -879,10 +1037,12 @@ def custom_postonline(n, node, logger, saveback, **kw):
 
             branch_delivery = attrs.get('number').split(':')[0]
 
+            is_ems = attrs.get('delivery_company') == 'E' and True or False
+
             if package_type == 'C1':
                 attrs['mass'] = local_GetPackageWeight(package_type, len(ids), enclosure=case_enclosure)
                 attrs['category'] = 'ORDINARY'
-                attrs['type'] = 'PARCEL_CLASS_1'
+                attrs['type'] = is_ems and 'EMS_TENDER' or 'PARCEL_CLASS_1'
 
             elif package_type in ('C2','C3') and is_named_type and is_addr_delivery:
                 if len(ids) > 1 or package_size != 1:
@@ -897,17 +1057,24 @@ def custom_postonline(n, node, logger, saveback, **kw):
                 #    raise ProcessException('PostOnline: Коробка с количеством карт больше %s:%s' % (package_size, ids))
                 attrs['mass'] = local_GetPackageWeight(case_box, len(ids))
                 attrs['category'] = 'ORDINARY'
-                attrs['type'] = 'PARCEL_CLASS_1'
+                attrs['type'] = is_ems and 'EMS_TENDER' or 'PARCEL_CLASS_1'
+
+            if is_ems:
+                attrs['transport-mode'] = 'EXPRESS'
+
+            attrs['self_clean'] = True
 
             # ============================
             # Зарегистрировать отправление
             # ============================
 
-            data, errors = local_RegisterPostOnline(1, case_box, [package_code], **attrs)
+            errors = []
+
+            data = local_RegisterPostOnline(1, case_box, [package_code], errors=errors, **attrs)
 
             if not (data and isIterable(data) and len(data) == 3) or errors:
-                msg = 'PostOnline: %s Unexpected error, data:%s, errors:%s, branch:%s, recno:%s' % ( 
-                    filename, data, repr(errors), branch_delivery, recno)
+                msg = 'PostOnline: Unexpected error, data:%s, errors:%s, branch:%s, recno:%s' % ( 
+                    data, repr(errors), branch_delivery, recno)
                 print_to(None, 'ERROR:'+repr(package))
 
                 if errors and IsErrorPostOnlineFixed:
@@ -921,7 +1088,7 @@ def custom_postonline(n, node, logger, saveback, **kw):
             if data is not None:
                 order_id, post_code, post_rate = data
 
-                if IsDebug:
+                if IsDeepDebug:
                     logger('--> RegisterPostOnline: %s, attrs: %s, props: %s' % (repr(package[3]), attrs, props), force=True)
 
         package = packages[code]
@@ -948,7 +1115,7 @@ def custom_postonline(n, node, logger, saveback, **kw):
             order_id, post_code, post_rate = data
 
             if package_code != key:
-                raise ProcessException('PostOnline: %s Package is not checked, key:%s-%s' % (filename, package_code, key))
+                raise ProcessException('PostOnline: Package is not checked, key:%s-%s' % (package_code, key))
 
             if case_box not in orders:
                 orders[case_box] = []
@@ -962,10 +1129,12 @@ def custom_postonline(n, node, logger, saveback, **kw):
         send_date = getDate(order.ready_date, format=LOCAL_EASY_DATESTAMP)
 
         for case_box in orders:
-            names, errors = local_RegisterPostOnline(2, case_box, orders[case_box], send_date=send_date)
+            errors = []
+
+            names = local_RegisterPostOnline(2, case_box, orders[case_box], send_date=send_date, errors=errors)
 
             if not names or errors:
-                raise ProcessException('PostOnline: %s Checkin is invalid, names:%s, errors:%s' % (filename, names, errors))
+                raise ProcessException('PostOnline: Checkin is invalid, names:%s, errors:%s' % (names, errors))
 
             saveback['names'][case_box] = names
 
@@ -978,19 +1147,31 @@ def custom_postonline(n, node, logger, saveback, **kw):
         names = saveback['names']
 
         for case_box in orders:
-            data, errors = local_RegisterPostOnline(3, case_box, names[case_box], 
+            errors = []
+
+            data = local_RegisterPostOnline(3, case_box, names[case_box], 
                 addr_to=addr_to, 
                 unload_to=unload_to, 
+                filename=filename,
                 send_date=send_date, 
-                filename=filename
+                print_type=LOCAL_PRINT_TYPE,
+                with_forms=LOCAL_POSTONLINE_WITH_FORMS,
+                errors=errors,
                 )
 
             if not data or len(data) != len(names[case_box]) or errors:
-                raise ProcessException('PostOnline: %s Documents unload is failed, names:%s, errors:%s' % (filename, data, errors))
+                raise ProcessException('PostOnline: Documents unload is failed, names:%s, errors:%s' % (data, errors))
 
-        batches = ';'.join(['%s:%s' % (x, ','.join(names[x])) for x in names])
+        def _get_batch_key(x, values):
+            return '%s:%s' % (x, sjoin(values, ','))
 
-        updateTag(node, 'PostOnlineBatches', batches)
+        orders = ','.join(["'%s':[%s]" % (_get_batch_key(x, names[x]), sjoin(orders[x], ',')) for x in names])
+
+        updateTag(node, LOCAL_ORDERS_TAG, orders)
+
+        batches = ';'.join([_get_batch_key(x, names[x]) for x in names])
+
+        updateTag(node, LOCAL_BATCHES_TAG, batches)
 
         logger('PostOnline OK: %s, phase[%s], созданы почтовые отправления: %s' % (filename, phase, batches), force=True)
 
@@ -998,15 +1179,17 @@ def custom_postonline_sender(n, node, logger, saveback, **kw):
     """
         Рассылка почтовых отправлений в ОПС (zip)
     """
-    if node.tag != 'ProcessInfo':
+    if node.tag != 'ProcessInfo' or not IsCheckF103Sent:
         return
 
     order = kw.get('order')
     service = kw.get('service')
 
-    batches = getTag(node, 'PostOnlineBatches')
+    batches = getTag(node, LOCAL_BATCHES_TAG)
 
     if batches:
+        print_log_space('FileID:%s = custom_postonline_sender' % order.id)
+
         filename = order.filename
 
         # ====================
@@ -1019,12 +1202,15 @@ def custom_postonline_sender(n, node, logger, saveback, **kw):
             case_box, orders = batch.split(':')
             names = orders.split(',')
 
-            emails, errors = local_RegisterPostOnline(4, case_box, names, 
+            errors = []
+
+            emails = local_RegisterPostOnline(4, case_box, names, 
                 addr_to=addr_to, 
                 unload_to=unload_to, 
                 send_date=send_date, 
                 client_title=CLIENT_NAME[2],
-                filename=filename
+                filename=filename,
+                errors=errors,
                 )
 
             for msg in emails:
@@ -1041,6 +1227,8 @@ def change_delivery_date(n, node, logger, saveback, **kw):
     """
     order = kw.get('order')
     service = kw.get('service')
+    phase = kw.get('phase')
+
     recno = getTag(node, 'FileRecNo')
     force = True
 
@@ -1051,36 +1239,91 @@ def change_delivery_date(n, node, logger, saveback, **kw):
 
     params = kw.get('params')
 
-    delivery_date = params and isinstance(params, dict) and params.get('date') # '20.11.2018'
+    delivery_date = getDefaultValueByKey('date', params, None)
 
     if not delivery_date:
         return
 
+    if phase == 0:
+        if node.tag == 'FileInfo':
+            print_log_space('FileID:%s = change_delivery_date' % order.id)
+
     if node.tag == 'ProcessInfo':
+        batches = getTag(node, LOCAL_BATCHES_TAG).split(';')
+
+        # --------------------------------------------------
+        # Перерегистрация отправлений с новой датой отгрузки
+        # --------------------------------------------------
+
         send_date = getDate(delivery_date, LOCAL_DATESTAMP, is_date=True)
+        is_change_delivery_date = saveback.get(LOCAL_CHANGE_DELIVERY_DATE)
 
-        if params.get('auto'):
-            batches = getTag(node, 'PostOnlineBatches').split(';')
+        if not phase and is_change_delivery_date:
+            errors = {}
 
-            addr_to, unload_to, ready_date = _get_batch_params(order, service)
+            if params.get('auto') and batches:
+                addr_to, unload_to, ready_date = _get_batch_params(order, service)
 
-            # --------------------------------------------------
-            # Перерегистрация отправлений с новой датой отгрузки
-            # --------------------------------------------------
+                data, errors = local_ChangePostOnline(batches, send_date, 
+                    addr_to=addr_to, 
+                    no_email=not IsCheckF103Sent, 
+                    no_break=False,
+                    print_type=LOCAL_PRINT_TYPE,
+                    with_forms=LOCAL_POSTONLINE_WITH_FORMS,
+                    )
 
-            data, errors = local_ChangePostOnline(batches, send_date, addr_to=addr_to)
+                if not data or len(data) != len(batches):
+                    raise ProcessException('PostOnline: Documents unload is failed, ids:%s, errors:%s' % (data, errors))
 
-            if not data or len(data) != len(batches):
-                raise ProcessException('PostOnline: %s Documents unload is failed, ids:%s, errors:%s' % (filename, data, errors))
+                saveback['DATA'] = data
+                saveback['ERRORS'] = errors
 
-            logger('PostOnline, OK: %s, выполнена перерегистрация отправлений: %s, ids:%s, errors:%s' % (filename, batches, data, errors), force=True)
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            # Проверить - требуется ли изменение даты отгрузки для записи с заданным номером заказа
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        saveback[READY_DATE] = '%s 18:00' % getDate(send_date, LOCAL_EASY_DATESTAMP)
-        logger('Changed delivery date for: %s to %s' % (order.filename, saveback[READY_DATE]), force=force)
+            should_be_changed = []
+
+            try:
+                orders = eval('{%s}' % getTag(node, LOCAL_ORDERS_TAG))
+
+                for batch in orders:
+                    if not list(filter(lambda x: x != 'BATCH_NOT_CHANGED', errors.get(batch))):
+                        should_be_changed += orders[batch] or []
+            except:
+                should_be_changed = None
+
+            saveback['should_be_changed'] = should_be_changed
+
+        if phase == 1:
+            if is_change_delivery_date:
+                if not checkTagExists(node, LOCAL_BATCHES_TAG) or not saveback.get('DATA'):
+                    raise ProcessException('PostOnline: Batches data is invalid!, batches:%s' % batches)
+
+                logger('PostOnline, OK: %s, выполнена перерегистрация отправлений: %s, ids:%s, errors:%s' % (
+                    filename, batches, saveback['DATA'], saveback['ERRORS']), force=True)
+
+        if phase == 1 or phase is None:
+            saveback[READY_DATE] = '%s 18:00' % getDate(send_date, LOCAL_EASY_DATESTAMP)
+            logger('Changed delivery date for: %s to %s' % (order.filename, saveback[READY_DATE]), force=force)
+
         return
 
-    if node.tag != 'FileBody_Record':
+    if not phase:
+        if node.tag == 'FileBody_Record' and not saveback.get(LOCAL_CHANGE_DELIVERY_DATE):
+            if local_IsDeliveryWithDate(node):
+                saveback[LOCAL_CHANGE_DELIVERY_DATE] = True
+
+    if phase == 0 or node.tag != 'FileBody_Record':
         return
+
+    post_order_id = getTag(node, 'PostOrderID')
+
+    if post_order_id and post_order_id.isdigit():
+        should_be_changed = saveback.get('should_be_changed')
+
+        if should_be_changed is not None and int(post_order_id) not in should_be_changed:
+            return
 
     updateTag(node, 'DeliveryDate', delivery_date)
 
@@ -1143,9 +1386,88 @@ def change_delivery_address(n, node, logger, saveback, **kw):
 
     logger('Changed %s Node: %s, address:%s, recno: %s' % (order.filename, node.tag, address, file_recno), force=True)
 
-def checker(n, node, logger, saveback, **kw):
-    if node.tag != 'FileBody_Record':
+def unregister(n, node, logger, saveback, **kw):
+    order = kw.get('order')
+    connect = kw.get('connect')
+
+    recno = getTag(node, 'FileRecNo')
+
+    # -----------------------------------------------------------------
+    # Полная переупаковка файла с перерегистрацией упаковок ПочтаРоссии
+    # -----------------------------------------------------------------
+
+    delivery_date = '15.01.2021'
+
+    changed = False
+
+    if node.tag == 'ProcessInfo':
+        if LOCAL_CHECK_POSTONLINE_FREE:
+            updateTag(node, LOCAL_BATCHES_TAG, 'C1-A2:4790') # !!!
+        else:
+            removeTag(node, LOCAL_BATCHES_TAG)
+        logger('--> Unregister %s Node: %s, recno: %s' % (order.filename, node.tag, recno), force=True)
         return
+
+    if node.tag != 'FileBody_Record':
+        saveback[READY_DATE] = '%s 18:00' % getDate(getDate(delivery_date, format='%d.%m.%Y', is_date=True), LOCAL_EASY_DATESTAMP)
+        return
+
+    # Регистрировать только заданный тип карты
+    if LOCAL_CHECK_POSTONLINE_FREE:
+        if getTag(node, 'CardType') != 'ICA':
+            return
+
+    # Тип файла
+    filetype = order.filetype
+
+    recno = getTag(node, 'FileRecNo')
+
+    p = getTag(node, 'PackageCode')
+    s = getTag(node, 'StampCode')
+    i = getTag(node, 'StampIndex')
+
+    # Дата отгрузки
+    updateTag(node, 'DeliveryDate', delivery_date)
+
+    # Номер пломбы, индекс первой карты, номер транспортной упаковки, ШПИ
+    stamp_code, stamp_index, package_code, post_code = local_UpdateStampCode(node, order, connect, logger, saveback, filetype=filetype)
+
+    # Транспортный ШПИ
+    updateTag(node, 'PostBarcode', local_GetPostBarcode(post_code))
+
+    GEN_INC_Record(node, [
+        ('DeliveryDate', delivery_date,),
+        ('PackageCode', package_code,),
+        ('StampCode', stamp_code,),
+        ('StampIndex', stamp_index,),
+        ('PostCode', post_code,),
+    ])
+
+    GEN_DLV_Record(node, [
+        stamp_code,
+        None,
+        None,
+        None,
+        delivery_date,
+    ], ';')
+
+    # Удалить теги ОПС ПочтаРоссии
+    removeTag(node, 'PostOrderID')
+    removeTag(node, 'PostBarcode')
+    removeTag(node, 'PostRate')
+
+    # Удалить теги инкассации
+    removeTag(node, 'INC_Date')
+    removeTag(node, 'INC_Answer_DateTime')
+
+    changed = True
+
+    logger('--> recno:%s StampCode[%s:%s], StampIndex[%s:%s], PackageCode[%s:%s]' % (
+        recno, s, stamp_code, i, stamp_index, p, package_code), force=True)
+
+def checker(n, node, logger, saveback, **kw):
+    #if node.tag != 'FileBody_Record':
+    #    return
 
     order = kw.get('order')
     connect = kw.get('connect')
@@ -1153,6 +1475,48 @@ def checker(n, node, logger, saveback, **kw):
     recno = getTag(node, 'FileRecNo')
 
     changed = False
+
+    # --------------------------------------------------------
+    # Скорректировать теги регистрации отправлений ПочтаРоссии
+    # --------------------------------------------------------
+
+    if node.tag == 'ProcessInfo':
+        if LOCAL_CHECK_POSTONLINE_FREE:
+            updateTag(node, LOCAL_ORDERS_TAG, "'C3-LETTER:1260':[353004406],'C1-A2:4790':[348459066,348459093,348459116,348459220]")
+            updateTag(node, LOCAL_BATCHES_TAG, 'C3-LETTER:1260;C1-A2:4790')
+        else:
+            return
+    else:
+        return
+
+    """
+    # -----------------------------------
+    # Принудительно сменить дату отгрузки
+    # -----------------------------------
+
+    if node.tag == 'FileInfo':
+        return
+
+    delivery_date = '20.06.2020'
+
+    if node.tag == 'ProcessInfo':
+        saveback[READY_DATE] = '%s 18:00' % getDate(getDate(delivery_date, format='%d.%m.%Y', is_date=True), LOCAL_EASY_DATESTAMP)
+        return
+
+    updateTag(node, 'DeliveryDate', delivery_date)
+
+    GEN_INC_Record(node, [
+        ('DeliveryDate', delivery_date,),
+    ])
+
+    GEN_DLV_Record(node, [
+        None,
+        None,
+        None,
+        None,
+        delivery_date,
+    ], ';')
+    """
     """
     updateTag(node, 'PAY_SYSTEM', 'KONA_2320_X5')
     """
@@ -1226,56 +1590,6 @@ def checker(n, node, logger, saveback, **kw):
     ], ';')
     """
     """
-    # -----------------------------------------------------
-    # Полная переупаковка файла с перерегистрацией упаковок
-    # -----------------------------------------------------
-
-    changed = False
-    
-    order = kw.get('order')
-    connect = kw.get('connect')
-
-    # Тип файла
-    filetype = order.filetype
-
-    recno = getTag(node, 'FileRecNo')
-
-    p = getTag(node, 'PackageCode')
-    s = getTag(node, 'StampCode')
-    i = getTag(node, 'StampIndex')
-
-    delivery_date = '22.02.2019'
-
-    # Дата отгрузки
-    updateTag(node, 'DeliveryDate', delivery_date)
-
-    # Номер пломбы, индекс первой карты, номер транспортной упаковки, ШПИ
-    stamp_code, stamp_index, package_code, post_code = local_UpdateStampCode(node, order, connect, logger, saveback, filetype=filetype)
-
-    # Транспортный ШПИ
-    updateTag(node, 'PostBarcode', local_GetPostBarcode(post_code))
-
-    GEN_INC_Record(node, [
-        ('DeliveryDate', delivery_date,),
-        ('PackageCode', package_code,),
-        ('StampCode', stamp_code,),
-        ('StampIndex', stamp_index,),
-        ('PostCode', post_code,),
-    ])
-
-    GEN_DLV_Record(node, [
-        stamp_code,
-        None,
-        None,
-        None,
-        delivery_date,
-    ], ';')
-
-    logger('--> recno:%s StampCode[%s:%s], StampIndex[%s:%s], PackageCode[%s:%s]' % (
-        recno, s, stamp_code, i, stamp_index, p, package_code), force=True)
-
-    """
-    """
     # ---------------------------------------------
     # Смена ШПИ ПочтаРоссии (переделка отправления)
     # ---------------------------------------------
@@ -1298,9 +1612,9 @@ def checker(n, node, logger, saveback, **kw):
     updateTag(node, 'CardGroup', card_group)
     updateTag(node, 'Sort', str(card_group)+getTag(node, 'Sort'))
     """
-    """
+
     changed = True
-    """
+
     """
     if not getINCRecordValue(node, 'PostCode'):
         GEN_INC_Record(node, [
@@ -1328,6 +1642,25 @@ def checker(n, node, logger, saveback, **kw):
             updateTag(node, 'DLV_Record', '|'.join(values))
             changed = True
     """
+
+    if not changed:
+        return
+
+    logger('--> Changed %s Node: %s, recno: %s' % (order.filename, node.tag, recno), force=True)
+
+def check_process_info(n, node, logger, saveback, **kw):
+    if node.tag != 'ProcessInfo':
+        return
+
+    order = kw.get('order')
+    recno = getTag(node, 'FileRecNo')
+
+    changed = False
+
+    record = getTag(node, 'PostOnlineOrders')
+    if record:
+        updateTag(node, 'PostOnlineOrders', re.sub(r'[{}]', '', re.sub(r'(?:\'[\[\]])', '', record)))
+        changed = True
 
     if not changed:
         return

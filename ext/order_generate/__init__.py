@@ -9,9 +9,7 @@ from app.types.statuses import *
 
 from ..defaults import *
 
-from . import otkrytie
 from . import postbank
-from . import raund_megafon
 
 """
     ÃÂÚÓ‰˚ (‡ÚË·ÛÚ˚) ·‡ÁÓ‚Ó„Ó ÍÎ‡ÒÒ‡.
@@ -47,27 +45,11 @@ from . import raund_megafon
 # ----------------------------------------------- #
 
 scenario = [
-    #('Dolinsk',
-    #    [STATUS_DATA_VERIFIED, STATUS_ACCEPTED],
-    #    {
-    #        'custom' : dolinsk.custom,
-    #    },
-    #),
-    # -------------
-    # ¡¿Õ  Œ“ –€“»≈
-    # -------------
-    #(0, 'Otkrytie_v1',
-    #    [STATUS_DATA_CHECKED, STATUS_DATA_GENERATED, STATUS_REJECTED_INVALID],
-    #    {
-    #        'tags'   : otkrytie.tags,
-    #        'custom' : otkrytie.custom,
-    #    },
-    #),
     # ----------
     # œŒ◊“¿ ¡¿Õ 
     # ----------
     (0, 'PostBank_v1',
-        [STATUS_DATA_CHECKED, postbank.status_to, STATUS_REJECTED_INVALID],
+        [STATUS_DATA_CHECKED, postbank.status_to, postbank.status_error],
         {
             'tags'   : postbank.tags,
             'custom' : postbank.custom_step1,
@@ -93,21 +75,21 @@ scenario = [
         },
     ),
     (0, 'PostBank_ID',
-        [STATUS_DATA_CHECKED, STATUS_ON_CHECK_ICARD, STATUS_REJECTED_INVALID],
+        [STATUS_DATA_CHECKED, STATUS_ON_CHECK_ICARD, postbank.status_error],
         {
             'tags'   : postbank.tags,
             'custom' : postbank.custom_step1,
         },
     ),
     (0, 'PostBank_IDM',
-        [STATUS_DATA_CHECKED, STATUS_ON_CHECK_ICARD, STATUS_REJECTED_INVALID],
+        [STATUS_DATA_CHECKED, STATUS_ON_CHECK_ICARD, postbank.status_error],
         {
             'tags'   : postbank.tags,
             'custom' : postbank.custom_step1,
         },
     ),
     (0, 'PostBank_X5',
-        [STATUS_DATA_CHECKED, postbank.status_to, STATUS_REJECTED_INVALID],
+        [STATUS_DATA_CHECKED, postbank.status_to, postbank.status_error],
         {
             'tags'   : postbank.tags,
             'custom' : postbank.custom_step1,
@@ -132,6 +114,32 @@ scenario = [
             'keep_history' : 1,
         },
     ),
+    (0, 'PostBank_CL',
+        [STATUS_DATA_CHECKED, STATUS_ON_GROUPED, postbank.status_error],
+        {
+            'tags'   : postbank.tags,
+            'custom' : postbank.custom_step1,
+        },
+    ),
+    (0, 'PostBank_CL',
+        [STATUS_ON_GROUPED, STATUS_FILTER_VERIFIED, STATUS_REJECTED_INVALID],
+        {
+            'tags'   : everything,
+            'custom' : postbank.custom_step2,
+            'phases' : 2,
+
+            'keep_history' : 1,
+        },
+    ),
+    (0, 'PostBank_CL',
+        [STATUS_FILTER_VERIFIED, STATUS_DATA_GENERATED, STATUS_REJECTED_INVALID],
+        {
+            'tags'   : everything,
+            'custom' : postbank.custom_step3,
+
+            'keep_history' : 1,
+        },
+    ),
     # ------------------------------------------
     # –≈√»—“–¿÷»ﬂ Œ“œ–¿¬À≈Õ»… œŒ◊“¿–Œ——»»-ŒÕÀ¿…Õ
     # ------------------------------------------
@@ -146,7 +154,7 @@ scenario = [
         },
     ),
     (1, 'PostBank_v1',  
-        [STATUS_POST_ONLINE_STARTED, STATUS_POST_ONLINE_FINISHED, STATUS_ON_SUSPENDED],
+        [STATUS_CARD_ENCASH_FINISHED, None, STATUS_ON_SUSPENDED],
         {
             'tags'   : processinfo,
             'custom' : postbank.custom_postonline_sender,
@@ -165,7 +173,7 @@ scenario = [
         },
     ),
     (1, 'PostBank_ID',  
-        [STATUS_POST_ONLINE_STARTED, STATUS_POST_ONLINE_FINISHED, STATUS_ON_SUSPENDED],
+        [STATUS_CARD_ENCASH_FINISHED, None, STATUS_ON_SUSPENDED],
         {
             'tags'   : processinfo,
             'custom' : postbank.custom_postonline_sender,
@@ -184,7 +192,7 @@ scenario = [
         },
     ),
     (1, 'PostBank_IDM',  
-        [STATUS_POST_ONLINE_STARTED, STATUS_POST_ONLINE_FINISHED, STATUS_ON_SUSPENDED],
+        [STATUS_CARD_ENCASH_FINISHED, None, STATUS_ON_SUSPENDED],
         {
             'tags'   : processinfo,
             'custom' : postbank.custom_postonline_sender,
@@ -203,7 +211,7 @@ scenario = [
         },
     ),
     (1, 'PostBank_X5',  
-        [STATUS_POST_ONLINE_STARTED, STATUS_POST_ONLINE_FINISHED, STATUS_ON_SUSPENDED],
+        [STATUS_CARD_ENCASH_FINISHED, None, STATUS_ON_SUSPENDED],
         {
             'tags'   : processinfo,
             'custom' : postbank.custom_postonline_sender,
@@ -211,15 +219,25 @@ scenario = [
             'keep_history' : 1,
         },
     ),
-    # ------------------
-    # ¡¿Õ  –¿”Õƒ Ã≈√¿‘ŒÕ
-    # ------------------
-    #(0, 'Raund_Megafon',
-    #    [STATUS_DATA_GENERATED, STATUS_PINGEN_FINISHED],
-    #    {
-    #        'custom' : raund_megafon.custom, 
-    #    },
-    #),
+    (1, 'PostBank_CL',  
+        [STATUS_BANKCHIP_READY, postbank.status_postonline_to, STATUS_ON_SUSPENDED],
+        {
+            'tags'   : everything,
+            'custom' : postbank.custom_postonline,
+            'phases' : 2,
+
+            'keep_history' : 1,
+        },
+    ),
+    (1, 'PostBank_CL',  
+        [STATUS_CARD_ENCASH_FINISHED, None, STATUS_ON_SUSPENDED],
+        {
+            'tags'   : processinfo,
+            'custom' : postbank.custom_postonline_sender,
+
+            'keep_history' : 1,
+        },
+    ),
     # ------------
     # Œ·ÒÎÛÊË‚‡ÌËÂ
     # ------------
@@ -298,6 +316,35 @@ scenario = [
             'tags'   : everything,
             'custom' : postbank.restart_inc_cards,
             'forced' : 295709,
+
+            'change_status' : 0,
+        },
+    ),
+    (1, 'PostBank_v1',
+        [255, 0,],
+        {
+            'custom' : postbank.checker,
+            'tags'   : everything,
+            'forced' : 218302,
+
+            'change_status' : 0,
+        },
+    ),
+    (1, 'PostBank_v1',
+        [198, 0,],
+        {
+            'custom' : postbank.unregister,
+            'tags'   : everything,
+            'forced' : 339431,
+
+            'change_status' : 0,
+        },
+    ),
+    (1, 'PostBank_v1',
+        [255, 0,],
+        {
+            'custom' : postbank.checker,
+            'forced' : 355299,
 
             'change_status' : 0,
         },

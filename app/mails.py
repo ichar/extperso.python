@@ -22,13 +22,14 @@ from email.header import Header
 
 try:
     from config import (
-        IsDebug, IsPrintExceptions, print_exception, cr,
+        IsDebug, IsPrintExceptions, print_exception, print_to, cr,
         default_unicode, default_encoding, default_print_encoding
     )
 except:
     IsDebug = 1
     IsPrintExceptions = 0
     print_exception = None
+    print_to = None
     cr = '\n'
 
     default_unicode = 'utf-8'
@@ -70,6 +71,11 @@ smtphost = None
 
 ## ============================== ##
 
+
+def to_ascii(s):
+    return s and s.encode('ascii', 'ignore').decode('ascii') or ''
+
+
 class SendMail(object):
     """
         SMTP Mail Sender.
@@ -90,8 +96,8 @@ class SendMail(object):
 
         self._subject = subject
         self._from = kw.get('addr_from') or email_address_list['mailrobot']
-        self._to = kw.get('addr_to')
-        self._cc = kw.get('addr_cc')
+        self._to = to_ascii(kw.get('addr_to'))
+        self._cc = to_ascii(kw.get('addr_cc'))
 
         self._msg = None
 
@@ -106,8 +112,12 @@ class SendMail(object):
         smtphost = smtphosts[self._canal]
         email_address_list['mailrobot'] = smtphost.get('from') or DEAULT_MAILROBOT
 
-        if IsDebug:
-            print('smtphost:%s, port:%s\n' % (smtphost['host'], smtphost['port']))
+        if IsDebug and callable(print_to):
+            print_to(None, 'smtphost:%s, port:%s\n' % (smtphost['host'], smtphost['port']))
+
+    @property
+    def canal(self):
+        return self._canal
 
     def create_message(self, html):
         msg = MIMEMultipart()
@@ -346,7 +356,7 @@ def send_simple_mail(subject, message, addr_to, addr_cc=None, addr_from=None, wi
 
     return mail.send(with_raise=with_raise)
 
-def send_mail_with_attachment(subject, message, addr_to, addr_cc=None, attachments=None):
+def send_mail_with_attachment(subject, message, addr_to, addr_cc=None, attachments=None, with_info=None):
     if not addr_to:
         return 0
 
@@ -367,7 +377,13 @@ def send_mail_with_attachment(subject, message, addr_to, addr_cc=None, attachmen
         else:
             mail.attach_any(document, filename)
 
-    return mail.send()
+    code = mail.send()
+
+    if with_info:
+        return code, mail.canal, \
+            mail.canal is not None and smtphosts and mail.canal < len(smtphosts) and smtphosts[mail.canal] or None
+
+    return code
 
 
 if __name__ == "__main__":
@@ -375,7 +391,7 @@ if __name__ == "__main__":
 
     #   Arguments in debug mode:
     #       0: script name
-    #       1: mode     {0|1|2|3}
+    #       1: mode     {0|1|2|3|4}
     #       2: canal    {-1|0}
     #       3: addr_to  {<emails>}
 
@@ -387,7 +403,7 @@ if __name__ == "__main__":
 
     print('argv:%s' % repr(argv))
     
-    filename = ''
+    addr_to, filename = '', ''
 
     print('mode:%s, canal:%s\n' % (mode, canal))
 
@@ -403,9 +419,14 @@ if __name__ == "__main__":
         fi = open(source, 'rb')
         document = fi.read()
         fi.close()
+    elif mode == 4:
+        subject = 'Накладные DHL'
+        #addr_to = 'hperso@rosan.ru;otgruzka@rosan.ru;pmmos@rosan.ru;webdev@rosan.ru'
+        addr_to = 'webdev@rosan.ru'
+        source, filename = 'C:/apps/perso/tmp', 'VBEX_CRDEMB_20191230_005_20200113$DN.csv'
     else:
         subject = 'PostBank F103:354'
-        source, filename = 'C:/0', 'F003232005484828800028.zip'
+        source, filename = 'C:/0/mail', 'F003232005484901100002.zip'
 
     props = {'ClientName' : 'ПАО "ПОЧТАБАНК"', 'FileName' : filename}
 
@@ -430,8 +451,9 @@ if __name__ == "__main__":
     ''' % props
     
     addr_from = 'mailrobot@rosan.ru'
-    addr_to = len(argv) > 3 and argv[3] or 'support@expresscard.ru'
-    addr_cc = 'webdev@rosan.ru'
+    if not addr_to:
+        addr_to = len(argv) > 3 and argv[3] or 'webdev@rosan.ru'
+    addr_cc = ''
 
     code = 0
 
@@ -453,5 +475,17 @@ if __name__ == "__main__":
         mail.create_message('See attachment')
         mail.attach_zip(source, filename)
         code = mail.send()
+    elif mode == 4:
+        """
+        mail = SendMail(subject, addr_from=addr_from, addr_to=addr_to)
+        mail.create_message('See attachment')
+        mail.attach_csv(source, filename)
+        code = mail.send()
+        """
+        message = 'See attachment'
+        attachments = [(source, filename, 'csv'),]
+        code, canal, smtphost = send_mail_with_attachment(subject, message, addr_to, attachments=attachments, with_info=True)
+
+        print('canal:%s, smtphost:%s' % (canal, smtphost))
 
     print('Mail sent to: %s, cc: %s, code: %d' % (addr_to, addr_cc, code))

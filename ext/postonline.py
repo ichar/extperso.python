@@ -12,22 +12,30 @@ import time
 
 try:
     from config import (
-         IsDebug, IsDeepDebug, IsDisableOutput, IsPrintExceptions, IsNoEmail, 
-         default_print_encoding, default_unicode, default_encoding, default_iso, cr,
-         LOCAL_EASY_DATESTAMP, UTC_FULL_TIMESTAMP, DATE_STAMP,
-         print_to, print_exception, setErrorlog,
+         IsDebug, IsDeepDebug, IsTrace, IsDisableOutput, IsPrintExceptions, IsNoEmail, 
+         IsCheckConnect, IsForcedCleanAddress, IsCheckF103Sent, IsCheckSSL, 
+         default_print_encoding, default_unicode, default_encoding, default_iso, cr, 
+         LOCAL_EASY_DATESTAMP, UTC_FULL_TIMESTAMP, DATE_STAMP, 
+         print_to, print_exception, setErrorlog, 
          postonline
     )
     from app.mails import send_mail_with_attachment
     from app.utils import normpath, unzip, check_folder_exists, isIterable, getDate
-    
+
+    from ext.xmllib import clean_address
+
     #setErrorlog('traceback.log')
 
 except:
     IsDebug = 1
     IsDeepDebug = 1
     IsPrintExceptions = 0
+    IsCheckConnect = 1
+    IsForcedCleanAddress = 0
+    IsCheckF103Sent = 0
+
     print_exception = None
+    clean_address = None
 
 ## =============================
 ## EXT: POCHTA.RU ONLINE SERVICE
@@ -35,6 +43,17 @@ except:
 
 def to_base64(str):
     return base64.b64encode(str.encode()).decode("utf-8")
+
+def set_error(msg, **kw):
+    kw.get('errors', []).append(msg)
+
+def check_errors(**kw):
+    return kw.get('errors') and True or False
+
+def register_errors(point, items, **kw):
+    if items:
+        kw.get('errors', []).extend([{'point':point, 'items':items}])
+
 
 _URL = {
     'clean_address'            : ('/%(api)s/clean/address', 'POST',),
@@ -59,6 +78,7 @@ _DEFAULT_CONTENT_TYPE = 'application/json'
 _DEFAULT_ACCEPT = 'application/json;charset=UTF-8'
 _DEFAULT_APP_VERSION = '1.0'
 _DEFAULT_BLOCK_SIZE = 1024
+_DEFAULT_PHONE = '88005500770'
 _DEFAULT_GOOD_QUALITY_CODE = ['GOOD', 'POSTAL_BOX', 'ON_DEMAND', 'UNDEF_05',]
 _DEFAULT_GOOD_VALIDATION_CODE = ['VALIDATED', 'OVERRIDDEN', 'CONFIRMED_MANUALLY']
 _DEFAULT_WARNINGS_CODE = ['NOT_VALIDATED_HAS_AMBI', 'NOT_VALIDATED_HAS_UNPARSED_PARTS']
@@ -70,10 +90,6 @@ _DEFAULT_FORCED_CODES = [
 _DEFAULT_SEND_DATE = '%Y/%m/%d'
 
 _EXCEPTIONS_LIMIT = 10
-
-# XXX Move these flags into config
-IsCheckConnect = 1
-IsForcedCleanAddress = 1
 
 
 class PochtaRuOnline:
@@ -178,7 +194,7 @@ class PochtaRuOnline:
             print('data:', data)
             print('URL:', url)
 
-        if IsDeepDebug:
+        if IsTrace:
             print_to(None, '%s%s' % ('headers:', headers))
             print_to(None, '%s%s' % ('method:', method))
             print_to(None, '%s%s' % ('data:', data))
@@ -187,22 +203,23 @@ class PochtaRuOnline:
         package = data and json.dumps(data) or None
 
         is_checked_error = False
+        verify = IsCheckSSL and True or False
 
         try:
             if not method:
                 pass
 
             elif method == 'GET':
-                response = requests.get(url, headers=headers, stream=stream)
+                response = requests.get(url, headers=headers, stream=stream, verify=verify)
 
             elif method == 'PUT':
-                response = requests.put(url, headers=headers, data=package)
+                response = requests.put(url, headers=headers, data=package, verify=verify)
 
             elif method == 'POST':
-                response = requests.post(url, headers=headers, data=package, stream=stream)
+                response = requests.post(url, headers=headers, data=package, stream=stream, verify=verify)
 
             elif method == 'DELETE':
-                response = requests.delete(url, headers=headers, data=package)
+                response = requests.delete(url, headers=headers, data=package, verify=verify)
 
             response.raise_for_status()
 
@@ -232,6 +249,14 @@ class PochtaRuOnline:
             if is_printable:
                 print("Response body: ", response is not None and response.text or None)
 
+        if IsTrace:
+            code, text = -1, ''
+            if response is not None:
+                code = response.status_code
+                text = response.text
+            
+            print_to(None, '--> connect: command:%s, url:%s, code:%s, response:%s' % (command, url, code, text))
+
         if not self.responseIsValid(response, is_printable=is_printable):
             pass
 
@@ -244,25 +269,30 @@ class PochtaRuOnline:
             https://otpravka.pochta.ru/specification#/nogroup-normalization_adress
 
             Аргументы:
-                attrs       -- dict, атрибуты запроса (адрес доставки)
+                attrs           -- dict, атрибуты запроса (адрес доставки)
 
             Обязательные атрибуты запроса (ключи attrs):
-                id          -- ID запроса (произвольный ключ запроса)
-                address     -- оригинальный адрес
+                id              -- ID запроса (произвольный ключ запроса)
+                address         -- оригинальный адрес
+
+            Ключевые аргументы:
+                forced_address  -- bool, режим "как есть"
+                self_clean      -- bool, режим "без нормализации", clean_address - встроенный парсер адреса
 
             Возврат:
-                address     -- dict, нормализованный Адрес доставки
-                errors      -- list, список ошибок
+                address         -- dict, нормализованный Адрес доставки
 
             Адрес (str):
-                index       -- индекс
-                region      -- регион, область
-                location    -- микрорайон
-                place       -- город, населенный пункт
-                street      -- улица
-                house       -- дом
-                corpus      -- корпус
-                room        -- квартира
+                index           -- индекс
+                region          -- регион, область
+                area            -- район
+                location        -- микрорайон
+                place           -- город, населенный пункт
+                street          -- улица
+                building        -- строение
+                house           -- дом
+                corpus          -- корпус
+                room            -- квартира
         """
         self._attrs = attrs
 
@@ -274,35 +304,61 @@ class PochtaRuOnline:
         response = self.connect('clean_address', data=data, **kw)
 
         if not self.responseIsValid(response, is_printable=True):
-            return None, None
+            return None
         
         r, errors = self.checkResponse(response)
 
+        register_errors('cleanAddress.before', errors, **kw)
+
         if r is None or errors:
-            return None, errors
+            return None
         
         if len(r) == 0 or not (isinstance(r[0], dict) and r[0].keys()):
-            return None, None
+            return None
 
         address = r[0]
         quality_code = address.get('quality-code')
         validation_code = address.get('validation-code')
 
-        code = quality_code in _DEFAULT_GOOD_QUALITY_CODE and ( \
+        code = quality_code in _DEFAULT_GOOD_QUALITY_CODE and ( 
             validation_code in _DEFAULT_GOOD_VALIDATION_CODE or validation_code in _DEFAULT_WARNINGS_CODE) and 1 or 0
 
+        forced_address = kw.get('forced_address')
+
+        number = kw.get('number')
+        self_clean = kw.get('self_clean')
+
+        if not forced_address:
+            errors = None if code == 1 else [(quality_code, validation_code)]
+
+        if not code:
+            if errors and isIterable(errors) and errors[0] in _DEFAULT_FORCED_CODES or not IsCheckF103Sent:
+                if IsForcedCleanAddress:
+                    code = 1
+                else:
+                    if IsDebug:
+                        print_to(None, 'cleanAddress.posterror: %s %s, errors:%s, self_clean:%s' % (number, repr(address), errors, self_clean))
+
+                    if callable(clean_address) and self_clean:
+                        x = clean_address(self._get_string("address"), **kw)
+
+                        if x:
+                            address.update(x)
+                            errors = []
+                    else:
+                        address = None
+
+        if address and not address.get('index'):
+            if not errors:
+                errors = []
+            errors.append('Post index is empty, address: %s' % address)
+
         if IsDebug:
-            print_to(None, 'cleanAddress, code[%s]: %s %s' % (code, kw.get('number'), repr(address)))
+            print_to(None, 'cleanAddress, code[%s]: %s %s, errors:%s' % (code, number, repr(address), errors))
 
-        if not code and IsForcedCleanAddress:
-            if(quality_code, validation_code) in _DEFAULT_FORCED_CODES:
-                code = 1
+        register_errors('cleanAddress.after', errors, **kw)
 
-        if not kw.get('forced_address'):
-            errors = None if code == 1 else [quality_code, validation_code]
-            address = code == 1 and address or None
-
-        return address, errors
+        return address
 
     def createOrder(self, attrs, **kw):
         """
@@ -319,9 +375,17 @@ class PochtaRuOnline:
 
             Возврат:
                 id          -- int, ID заказа
-                errors      -- list, список ошибок
         """
         self._attrs = attrs
+
+        data = None
+
+        def _add(words, with_to=False):
+            for keyword in words.split(':'):
+                key = keyword
+                if with_to:
+                    key = '%s-to' % keyword
+                data[0][key] = attrs.get(keyword)
 
         if not kw.get('cleaned'):
             data = [{
@@ -345,7 +409,7 @@ class PochtaRuOnline:
                 "street-to"       : self._get_string("street-to"),                          # Адрес:Улица
                 "room-to"         : self._get_string("room-to"),                            # Адрес:Квартира
                 "surname"         : self._get_string("surname"),                            # Получатель:Фамилия
-                "tel-address"     : self._get_int("phone"),                                 # Телефон получателя
+                "tel-address"     : self._get_string("phone"),                              # Телефон получателя
             }]
         else:
             data = [{
@@ -354,18 +418,14 @@ class PochtaRuOnline:
                 "mail-type"       : self._get_string("type"),
                 "mail-direct"     : 643,
                 "mass"            : self._get_int("mass"),
-                "tel-address"     : self._get_int("phone"),
+                "tel-address"     : self._get_string("phone") or _DEFAULT_PHONE,
             }]
-
-            def _add(words, with_to=False):
-                for keyword in words.split(':'):
-                    key = keyword
-                    if with_to:
-                        key = '%s-to' % keyword
-                    data[0][key] = attrs.get(keyword)
 
             _add('area:building:corpus:house:index:location:place:region:street:room', with_to=True)
             _add('given-name:middle-name:surname')
+
+        if data and data[0].get("mail-type") == 'EMS_TENDER':                               # Вид РПО (EMS_TENDER)
+            _add('transport-mode')
 
         # ID заказа
         data[0]["id"] = attrs.get('id')
@@ -376,11 +436,14 @@ class PochtaRuOnline:
 
         r, errors = self.checkResponse(self.connect('create_order', data=data, **kw))
 
+        register_errors('createOrder', errors, **kw)
+
         if r is None or errors:
-            return None, errors
+            return None
 
         codes = r.get("result-ids")
-        return codes and len(codes) == 1 and codes[0] or None, None
+
+        return codes and len(codes) == 1 and codes[0] or None
 
     def searchOrderById(self, id, **kw):
         """
@@ -394,19 +457,21 @@ class PochtaRuOnline:
 
             Возврат:
                 data        -- tuple, (barcode, rate):
+
                                barcode: str, ШПИ отправления (14)
                                rate: int, Почтовый сбор с НДС (в копейках)
-                errors      -- list, список ошибок
         """
         r, errors = self.checkResponse(self.connect('search_order', id=urllib.parse.quote_plus(str(id)), **kw))
 
+        register_errors('searchOrderById', errors, **kw)
+
         if r is None or errors:
-            return None, errors
+            return None
 
         barcode = r.get("barcode")
         rate = r.get("mass-rate-with-vat")
         
-        return (barcode, rate), None
+        return barcode, rate
 
     def removeOrders(self, ids, **kw):
         """
@@ -421,7 +486,6 @@ class PochtaRuOnline:
             Возврат:
                 data        -- list, [id,...]: 
                                ID удаленного заказа
-                errors      -- list, список ошибок
         """
         data = [x for x in ids if x]
 
@@ -430,12 +494,14 @@ class PochtaRuOnline:
 
         r, errors = self.checkResponse(self.connect('remove_orders', data=data, **kw))
 
+        register_errors('removeOrders', errors, **kw)
+
         if r is None or errors:
-            return None, errors
+            return None
 
         data = r.get("result-ids")
 
-        return data, None
+        return data
 
     def createBatch(self, ids, send_date=None, **kw):
         """
@@ -454,8 +520,7 @@ class PochtaRuOnline:
                                result-ids: list, список ID заказов, включенных в партию
 
             Возврат:
-                name        -- str, Номер партии
-                errors      -- list, список ошибок
+                names       -- list, номера партий
 
             Партия:
                 batch-name          -- str, Номер партии
@@ -471,14 +536,17 @@ class PochtaRuOnline:
         data = [x for x in ids if x]
 
         if not data:
-            return None, None
+            set_error('No data', **kw)
+            return None
 
         qs = self._make_querystring([('sending-date', send_date),])
 
         r, errors = self.checkResponse(self.connect('create_batch', data=data, qs=qs, **kw))
 
+        register_errors('createBatch', errors, **kw)
+
         if r is None or errors:
-            return None, errors
+            return None
 
         batches = r.get("batches")
         ids = r.get("result-ids")
@@ -488,15 +556,50 @@ class PochtaRuOnline:
         if batches and len(batches) > 0:
             names = [x.get("batch-name") for x in batches]
 
-        return names, None
+        return names
 
     batch = createBatch
+
+    def listOfBatch(self, name, **kw):
+        """
+            Запрос данных о заказах в партии.
+
+            https://otpravka.pochta.ru/specification#/batches-get_info_about_orders_in_batch
+
+            Аргументы:
+                name        -- str, Номер партии
+
+            Ответ сервера:
+                response    -- list: [{'id':<>, 'order_num':<>, ...}, ...] список отправлений, словарь параметров
+
+            Возврат:
+                code        -- int, код завершения: 1|0 (success|error)
+                errors      -- list, список ошибок
+        """
+        r, errors = self.checkResponse(self.connect('list_of_batch', name=name, **kw))
+
+        register_errors('listOfBatch', errors, **kw)
+
+        if r is None:
+            set_error('No data in batch', **kw)
+            return None
+
+        batches = r
+
+        ids = []
+
+        if batches and len(batches) > 0:
+            ids = [str(x.get("id")) for x in batches]
+
+        orders = {name : ids}
+
+        return orders
 
     def changeBatchSendDate(self, name, date, **kw):
         """
             Установка(смена) даты отправки для партии с заданным номером.
 
-            https://otpravka.pochta.ru/specification#/batches-sending_date_py
+            https://otpravka.pochta.ru/specification#/batches-sending_date
 
             Аргументы:
                 name        -- str, Номер партии
@@ -516,17 +619,21 @@ class PochtaRuOnline:
         
         r, errors = self.checkResponse(self.connect('change_send_date', name=name, qs=qs, **kw))
 
-        # XXX service returns empty response !!!
-        if r is None and not errors:
-            return 1, []
+        register_errors('changeBatchSendDate.before', errors, **kw)
 
-        if r is None or errors:
-            return None, errors or []
+        if r is None and not errors:
+            return 1
+
+        if r is None:
+            set_error('Response is empty!', **kw)
+            return None
 
         code = r.get("f103-sent") and 1 or 0
         errors = "error-code" in r and [r["error-code"]] or []
 
-        return code, errors
+        register_errors('changeBatchSendDate.after', errors, **kw)
+
+        return code
 
     change_date = changeBatchSendDate
 
@@ -549,15 +656,25 @@ class PochtaRuOnline:
                 code        -- int, код завершения: 1|0 (success|error)
                 errors      -- list, список ошибок
         """
+        if IsTrace:
+            print_to(None, '--> register.before: name:%s' % name)
+
         r, errors = self.checkResponse(self.connect('make_batch_f103', name=name, **kw))
 
+        register_errors('makeBatchF103', errors, **kw)
+
         if r is None or errors:
-            return None, errors
+            return None
 
-        code = r.get("f103-sent") and 1 or 0
-        errors = "error-code" in r and [r["error-code"]] or []
+        if IsCheckF103Sent:
+            code = r.get("f103-sent") and 1 or 0
+        else:
+            code = 1
 
-        return code, errors
+        if IsTrace:
+            print_to(None, '--> register.after: code:%s, errors:%s' % (code, errors))
+
+        return code
 
     checkin = makeBatchF103
 
@@ -584,7 +701,7 @@ class PochtaRuOnline:
         if response is None:
             return 0
 
-        self._unload_image(response, os.path.join(destination, '%s-f103.pdf' % name))
+        self._unload_image(response, os.path.join(destination, '%s-F103.pdf' % name))
 
         return 1
 
@@ -620,7 +737,7 @@ class PochtaRuOnline:
         if response is None:
             return 0
 
-        self._unload_image(response, os.path.join(destination, '%s-f7.pdf' % id))
+        self._unload_image(response, os.path.join(destination, '%s-forms.pdf' % id))
 
         return 1
 
@@ -653,11 +770,11 @@ class PochtaRuOnline:
         response = self.connect('print_order_forms_before', id=id, qs=qs, stream=True, is_image=True, **kw)
 
         if response is None:
-            return 0, None
+            return 0
 
-        self._unload_image(response, os.path.join(destination, '%s.pdf' % id))
+        self._unload_image(response, os.path.join(destination, '%s-forms-before.pdf' % id))
 
-        return 1, None
+        return 1
 
     def printBatchZip(self, name, destination, **kw):
         """
@@ -666,9 +783,10 @@ class PochtaRuOnline:
             https://otpravka.pochta.ru/specification#/documents-create_all_docs
 
             Генерирует и возвращает zip архив с 4-мя файлами:
-            Export.xls , Export.csv - список с основными данными по заявкам в составе партии
-            F103.pdf - форма ф103 по заявкам в составе партии
-            В зависимости от типа и категории отправлений, формируется комбинация из сопроводительных документов 
+            - Export.xls , Export.csv - список с основными данными по заявкам в составе партии
+            - F103.pdf - форма ф103 по заявкам в составе партии
+            - Файл отправления в формате zip, например:F003232005484932300015.zip (?)
+            - В зависимости от типа и категории отправлений, формируется комбинация из сопроводительных документов 
             в формате pdf ( формы: f7, f112, f22).
 
             Аргументы:
@@ -693,39 +811,46 @@ class PochtaRuOnline:
         unzip(src, destination=name, is_relative=True)
 
         return 1
-    
+
     all = printBatchZip
 
-    def unload_documents(self, attrs, destination, send_date=None, print_type=None, **kw):
+    def unload_documents(self, orders, destination, send_date=None, print_type=None, **kw):
         """
-            Выгрузка документов на отгрузку.
+            Выгрузка расширенного пакета документов на отгрузку.
 
             Аргументы:
-                attrs       -- dict, {'name' : {id,...}} заказы в разбивке по партиям
+                orders      -- dict, {'name' : [id, ...]} заказы в разбивке по партиям
+                destination -- str, маршрут для выгрузки файлов
+                send_date   -- str[optional], дата отправления
+                print_type  -- str[optional], тип печати: 'THERMO', 'PAPER'
 
             Возврат:
                 data        -- list, список обработанных партий
-                errors      -- list, список ошибок
         """
         data, errors = [], []
-        
-        for name in attrs:
-            code = self.printBatchF103(name, destination, **kw)
-            if not code:
-                errors.append('Error in printBatchF103, batch: %s' % name)
 
-            for id in attrs[name]:
-                code = self.printOrderForms(id, destination, send_date=send_date, print_type=print_type, **kw)
-                if not code:
-                    errors.append('Error in printOrderForms, order: %s' % id)
-
+        for name in orders:
             code = self.printBatchZip(name, destination, **kw)
             if not code:
                 errors.append('Error in printBatchZip, batch: %s' % name)
-            
+
+            # Unzipped folder for a batch with given `name` made by printBatchZip
+            folder = os.path.join(destination, name)
+
+            code = self.printBatchF103(name, folder, **kw)
+            if not code:
+                errors.append('Error in printBatchF103, batch: %s, folder: %s' % (name, folder))
+
+            for id in orders[name]:
+                code = self.printOrderForms(id, folder, send_date=send_date, print_type=print_type, **kw)
+                if not code:
+                    errors.append('Error in printOrderForms, order: %s, folder: %s' % (id, folder))
+
             data.append(name)
-        
-        return data, errors
+
+        register_errors('unload_documents', errors, **kw)
+
+        return data
 
     def register(self, attrs, **kw):
         """
@@ -748,15 +873,23 @@ class PochtaRuOnline:
                 type            -- str, Вид РПО: LETTER_CLASS_1|PARCEL_CLASS_1
 
             Возврат:
-                data            -- tuple, (order_id, barcode, rate):
-                                   order_id: str, ID заказа
+                data            -- tuple, (id, barcode, rate):
+
+                                   id: str, ID заказа
                                    barcode: str, ШПИ отправления (14)
                                    rate: int, Почтовый сбор с НДС (в копейках)
         """
-        address, errors = self.cleanAddress(attrs, **kw)
+        address = self.cleanAddress(attrs, **kw)
 
-        if address is None or not address:
-            return None, errors or ["ADDRESS IS INVALID"]
+        if not address:
+            set_error('ADDRESS IS INVALID', **kw)
+            return None
+
+        if check_errors(**kw):
+            return None
+
+        if IsTrace:
+            print_to(None, '--> register.before: attrs:%s, address:%s' % (attrs, address))
 
         attrs.update(address)
 
@@ -768,36 +901,41 @@ class PochtaRuOnline:
         elif receiver:
             fio = dict(zip('surname:given-name:middle-name'.split(':'), receiver.split()))
         else:
-            return None, errors or ["RECEIVER IS EMPTY"]
+            set_error('RECEIVER IS EMPTY', **kw)
+            return None
 
         attrs.update(fio)
 
-        order_id, errors = self.createOrder(attrs, cleaned=True, **kw)
+        id = self.createOrder(attrs, cleaned=True, **kw)
 
-        if not order_id or errors:
-            return None, errors
+        if IsTrace:
+            print_to(None, '--> register.after: id:%s' % id)
 
-        r, errors = self.searchOrderById(order_id)
+        if not id or check_errors(**kw):
+            return None
 
-        if not r or errors:
-            return None, errors
+        r = self.searchOrderById(id, **kw)
+
+        if not r or check_errors(**kw):
+            return None
 
         barcode, rate = r
 
-        return (order_id, barcode, rate), None
+        return id, barcode, rate
 
-    def unload(self, ids, get_destination, **kw):
+    def unload(self, names, get_destination, **kw):
         """
             Выгрузить документы.
 
             Аргументы:
-                ids  -- list, список номеров отправлений
+                names  -- list, список номеров отправлений
 
             Ключевые аргументы:
                 get_destination -- callable, функция маршрутизации каталога выгрузки файлов почтовых отправлений
+                with_forms      -- bool, выгрузка печатных форм для заказов
 
             Возврат:
-                data, errors: (list, list) -- результаты процесса
+                data: list -- результаты процесса
         """
         data, errors = [], []
 
@@ -809,16 +947,34 @@ class PochtaRuOnline:
 
             check_folder_exists(destination, root)
 
-            if not isIterable(ids):
-                ids = [ids]
+            if not isIterable(names):
+                names = [names]
 
-            for id in ids:
-                code = self.printBatchZip(id, destination, **kw)
-                if not code:
-                    break
-                data.append(id)
+            with_forms = kw.get('with_forms', None) and True or False
 
-        return data, errors
+            for name in names:
+                if with_forms:
+                    # Get list of ids for the given batch
+                    orders = self.listOfBatch(name, **kw)
+                    # Unload document forms
+                    if orders:
+                        self.unload_documents(orders, destination, **kw)
+                else:
+                    code = self.all(name, destination, **kw)
+                    if not code:
+                        continue
+
+                data.append(name)
+
+            if not names:
+                errors.append('No data to upload!')
+
+        else:
+            errors.append('upload: no destination callable!')
+
+        register_errors('unload', errors, **kw)
+
+        return data
 
     @staticmethod
     def send(ids, get_destination, **kw):
@@ -832,7 +988,7 @@ class PochtaRuOnline:
                 get_destination -- callable, функция маршрутизации каталога выгрузки файлов почтовых отправлений
 
             Возврат:
-                data, errors: (list, list) -- результаты процесса
+                data: list -- результаты процесса
         """
         data, errors = [], []
 
@@ -840,7 +996,8 @@ class PochtaRuOnline:
             addr_to = kw.get('addr_to')
 
             if not addr_to:
-                return data, ['No address to mail']
+                set_error('No address to mail', **kw)
+                return data
 
             client_title = kw.get('client_title') or ''
             filename = kw.get('filename') or ''
@@ -854,16 +1011,30 @@ class PochtaRuOnline:
                 source = '%s/%s' % (destination, id)
 
                 if not (os.path.exists(source) and os.path.isdir(source)):
-                    break
+                    errors.append('No source exists[%s]' % source)
+                    continue
 
                 subject = '%s%sF103:%s' % (client_title, client_title and ' ' or '', id)
                 message = 'Пакет к почтовому отправлению%s. Заказ: %s' % (send_date and ' от %s' % send_date or '', filename or str(id))
                 attachments = [(source, x, 'zip') for x in os.listdir(source) if os.path.splitext(x)[1] == '.zip']
 
-                if attachments and send_mail_with_attachment(subject, message, addr_to, attachments=attachments):
-                    data.append('%s to %s' % (subject, addr_to))
+                if attachments:
+                    if send_mail_with_attachment(subject, message, addr_to, attachments=attachments):
+                        data.append('%s to %s' % (subject, addr_to))
+                    else:
+                        errors.append('No emailed, id:%s' % id)
+                else:
+                    errors.append('No attachments to email, id:%s, source:%s' % (id, source))
 
-        return data, errors
+            if not ids:
+                errors.append('No data to send!')
+
+        else:
+            errors.append('send: no destination callable!')
+
+        register_errors('send', errors, **kw)
+
+        return data
 
 
 def registerPostOnline(mode, case, ids, get_destination=None, **kw):
@@ -881,19 +1052,26 @@ def registerPostOnline(mode, case, ids, get_destination=None, **kw):
         Дополнительные ключевые аргументы (kw):
             addr_to         -- str[optional]:mode=3,4, список адресов рассылки zip-архива F103 (Emails)
             send_date       -- str[optional]:mode=3,4, дата отправления
+            print_type      -- str[optional]:mode=3, тип печати
             client_title    -- str[optional]:mode=4, наименование клиента в почтовых сообщениях
             filename        -- str[optional]:mode=4, имя файла-заказа
+            with_forms      -- bool:mode=3, выгрузка печатных форм для заказов
+
+        Ошибки исполнения:
+            errors          -- list (kw), ключевой параметр(!)
 
         Возврат:
-            data, errors: (list or dict or None, list) -- результаты регистрации в сервисе
+            data: list or dict or None -- результаты регистрации в сервисе
     """
-    data, errors = [], []
+    data = []
 
     if not case in postonline:
-        return data, ['No account'], res
+        set_error('No account', **kw)
+        return data
 
     if mode in (3, 4) and (get_destination is None or not callable(get_destination)):
-        return data, ['No destination'], res
+        set_error('No destination', **kw)
+        return data
 
     token, key = postonline[case]
 
@@ -909,7 +1087,7 @@ def registerPostOnline(mode, case, ids, get_destination=None, **kw):
             attrs = {'id' : ids[0]}
             attrs.update(kw)
 
-            data, errors = p.register(attrs, **kw)
+            data = p.register(attrs, **kw)
 
         elif mode == 2:
 
@@ -917,12 +1095,12 @@ def registerPostOnline(mode, case, ids, get_destination=None, **kw):
             # Создать партию
             # --------------
 
-            names, errors = p.batch(ids, **kw)
-            if names and not errors:
+            names = p.batch(ids, **kw)
+            if names:
                 data = []
                 for name in names:
-                    code, errors = p.checkin(name)
-                    if not (code and not errors):
+                    code = p.checkin(name, **kw)
+                    if not code or check_errors(**kw):
                         break
                     data.append(name)
             else:
@@ -930,11 +1108,11 @@ def registerPostOnline(mode, case, ids, get_destination=None, **kw):
 
         elif mode == 3:
 
-            # -------------------------------
-            # Выгрузить документы (форму 103)
-            # -------------------------------
+            # --------------------------------------------------
+            # Выгрузить документы (форму 103, ф7п, E-1, конверт)
+            # --------------------------------------------------
 
-            data, errors = p.unload(ids, get_destination, **kw)
+            data = p.unload(ids, get_destination, **kw)
 
         elif mode == 4:
 
@@ -943,7 +1121,7 @@ def registerPostOnline(mode, case, ids, get_destination=None, **kw):
             # ------------------------------------
 
             if not IsNoEmail:
-                data, errors = p.send(ids, get_destination, **kw)
+                data = p.send(ids, get_destination, **kw)
             else:
                 data = ['no emailed: %s' % id for id in ids]
 
@@ -953,7 +1131,7 @@ def registerPostOnline(mode, case, ids, get_destination=None, **kw):
                 mode, case, str(ex), repr(ids))])
             print_exception()
 
-    return data, errors
+    return data
 
 
 def changePostOnline(batches, send_date, get_destination=None, **kw):
@@ -968,11 +1146,17 @@ def changePostOnline(batches, send_date, get_destination=None, **kw):
 
         Ключевые аргументы:
             get_destination -- callable, функция маршрутизации каталога выгрузки файлов почтовых отправлений
+            no_email        -- bool, не отправлять почтовый пакет в ОПС
+            no_break        -- bool, не прерывать выполнение процедуры при получении ошибки
 
         Возврат:
-            data, errors: (list, list) -- результаты регистрации в сервисе
+            data    -- list: результаты регистрации в сервисе
+            errors: -- dict: ошибки исполнения по партиям
     """
-    data, errors = [], []
+    data, errors = [], {}
+
+    is_no_email = (IsNoEmail or kw.get('no_email')) and True or False
+    is_no_break = kw.get('no_break') and True or False
     
     try:
         for batch in batches:
@@ -982,30 +1166,36 @@ def changePostOnline(batches, send_date, get_destination=None, **kw):
             case, name = batch.split(':')
             token, key = postonline[case]
 
+            errors[batch] = []
+
             p = PochtaRuOnline(token, key)
 
-            code, errs = p.changeBatchSendDate(name, send_date, is_check_exception=True, **kw)
-            if not code:
+            code = p.change_date(name, send_date, is_check_exception=True, errors=errors[batch], **kw)
+
+            if IsDebug:
+                print_to(None, 'changePostOnline.change_date, batch:%s, code[%s], errors:%s' % (batch, code, errors[batch]))
+
+            if not code and 'ALL_SHIPMENTS_SENT' not in errors[batch] and not is_no_break:
                 break
 
-            errors += errs
+            code = p.checkin(name, errors=errors[batch])
 
-            code, errs = p.makeBatchF103(name)
-            if not code and 'BATCH_NOT_CHANGED' not in errs:
+            if IsDebug:
+                print_to(None, 'changePostOnline.checkin, batch:%s, code[%s], errors:%s' % (batch, code, errors[batch]))
+
+            if 'BATCH_NOT_CHANGED' in errors[batch]:
+                data.append(name)
+                continue
+
+            if not code and not is_no_break:
                 break
 
-            errors += errs
-
-            items, errs = p.unload(name, get_destination, send_date=send_date)
-            if not items:
-                break
-            else:
+            items = p.unload(name, get_destination, send_date=send_date, errors=errors[batch], **kw)
+            if items:
                 data += items
 
-            if not IsNoEmail:
-                emails, errs = p.send(name, get_destination, send_date=send_date, **kw)
-
-                errors += errs
+            if not is_no_email:
+                emails = p.send(name, get_destination, send_date=send_date, errors=errors[batch], **kw)
 
     except:
         if IsPrintExceptions:

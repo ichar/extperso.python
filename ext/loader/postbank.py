@@ -10,6 +10,7 @@ __all__ = [
     'incoming_individual_design', 'incoming_individual_design_custom', 
     'incoming_nspk_individual_design', 'incoming_nspk_individual_design_custom', 
     'incoming_X5', 'incoming_X5_custom', 
+    'incoming_cyberlab', 'incoming_cyberlab_custom', 
     'reference', 'reference_custom', 'reference_outgoing', 
     'loyalty', 'loyalty_custom', 'loyalty_outgoing' 
     ]
@@ -24,7 +25,9 @@ from config import (
     print_to, print_exception
 )
 
+from app.core import ProcessException, CustomException
 from app.modules.loader import BaseIncomingLoader, BaseReferenceLoader
+from app.types.statuses import *
 from app.types.errors import *
 from app.srvlib import *
 from app.utils import normpath
@@ -53,7 +56,7 @@ incoming = deepcopy(FILETYPE_POSTBANK_V1)
 incoming.update({
     'class'     : BaseIncomingLoader,
     'location'  : '%s/%s/%s' % (DEFAULT_INCOMING_ROOT, FILETYPE_FOLDER, DEFAULT_FROMBANK),
-    'mask'      : r'VBEX_.*_(40599((?:11[2|3|4|5])|(?:21[6|7|8|9])|(?:220))).*\.txt',
+    'mask'      : r'VBEX_.*_(40599((?:11[2|3|4|5])|(?:12[4|5])|(?:21[6|7|8|9])|(?:22[0|3]))|41826101|4182620[1|3]|220077012|22007702[C|D|E]|220077043|220077071|52731701).*\.txt',
     'encoding'  : DEFAULT_INCOMING_TYPE['encoding'],
 })
 
@@ -62,7 +65,7 @@ incoming_individual_design = deepcopy(FILETYPE_POSTBANK_ID)
 incoming_individual_design.update({
     'class'     : BaseIncomingLoader,
     'location'  : '%s/%s/%s' % (DEFAULT_INCOMING_ROOT, FILETYPE_FOLDER, DEFAULT_FROMBANK),
-    'mask'      : r'VBEX_.*_(40599((?:[1|2]11)|(?:122)|(?:222))).*\.txt',
+    'mask'      : r'VBEX_.*_(40599((?:[1|2]11)|(?:122)|(?:126)|(?:222))).*\.txt',
     'encoding'  : DEFAULT_INCOMING_TYPE['encoding'],
 })
 
@@ -81,6 +84,15 @@ incoming_X5.update({
     'class'     : BaseIncomingLoader,
     'location'  : '%s/%s/%s' % (DEFAULT_INCOMING_ROOT, FILETYPE_FOLDER, DEFAULT_FROMBANK),
     'mask'      : r'VBEX_.*_22007704[4|5|A].*\.txt',
+    'encoding'  : DEFAULT_INCOMING_TYPE['encoding'],
+})
+
+incoming_cyberlab = deepcopy(FILETYPE_POSTBANK_CYBERLAB)
+
+incoming_cyberlab.update({
+    'class'     : BaseIncomingLoader,
+    'location'  : '%s/%s/%s' % (DEFAULT_INCOMING_ROOT, FILETYPE_FOLDER, DEFAULT_FROMBANK),
+    'mask'      : r'VBEX_.*_(4059921[2|3|4|5]).*\.txt',
     'encoding'  : DEFAULT_INCOMING_TYPE['encoding'],
 })
 
@@ -117,6 +129,60 @@ def accept(filename):
 def error(filename):
     return normpath('%s/%s/%s/%s.ERROR' % (DEFAULT_INCOMING_ROOT, FILETYPE_FOLDER, DEFAULT_TOBANK, filename))
 
+def _get_parent(caller, **kw):
+    parent = kw.get('parent')
+
+    try:
+        if parent is None or not parent.__class__.__name__:
+            return
+    except:
+        msg = 'loader.%s: Unexpected error, parent is invalid[%s]' % (caller, repr(parent))
+        raise ProcessException(msg)
+
+    return parent
+
+def _check_product_design(n, node, logger, saveback, **kw):
+    parent = _get_parent('_check_product_design', **kw)
+
+    if not parent or parent._forced_status:
+        return
+
+    key = 'ProductDesign'
+
+    # Имя входящего файла
+    filename = parent.in_processing()
+    # Код дизайна пластика
+    product_design = getTag(node, key)
+    # Тип файла
+    filetype = parent.incoming.get('filetype')
+    # ID карты банка
+    id = getTag(node, LOCAL_ID_TAG)
+
+    # -------------------------------
+    #  Проверка дизайна на блокировку
+    # -------------------------------
+
+    words = list(filter(lambda x: x != 'FAST', filename.split('_')))
+    order_product_design = len(words) > 4 and words[4]
+
+    if order_product_design:
+        if local_IsPlasticDisabled(order_product_design, filetype=filetype):
+            parent._forced_status = STATUS_REJECTED_DISABLED
+            return HANDLER_CODE_ERROR
+
+    if product_design:
+        if product_design != order_product_design:
+            error = (n, id, [(key, 'OS'),])
+            logger('Запись: %s, %s некорректный код дизайна: %s, error:%s' % (n, filename, product_design, error), is_error=True)
+            saveback['errors'].append(error)
+            parent._forced_status = STATUS_REJECTED_DISABLED
+
+        elif local_IsPlasticDisabled(product_design, filetype=filetype):
+            error = (n, id, [(key, 'OS'),])
+            logger('Запись: %s, %s дизайн заблокирован: %s, error:%s' % (n, filename, product_design, error), is_error=True)
+            saveback['errors'].append(error)
+            parent._forced_status = STATUS_REJECTED_DISABLED
+
 # ========================= #
 
 def validator(value):
@@ -126,25 +192,31 @@ def incoming_custom(n, node, logger, saveback, **kw):
     """
         Загрузчик записи входящего файла заказа
     """
-    pass
+    return _check_product_design(n, node, logger, saveback, **kw)
 
 def incoming_individual_design_custom(n, node, logger, saveback, **kw):
     """
         Загрузчик записи входящего файла заказа, индивидуальный дизайн
     """
-    pass
+    return _check_product_design(n, node, logger, saveback, **kw)
 
 def incoming_nspk_individual_design_custom(n, node, logger, saveback, **kw):
     """
         Загрузчик записи входящего файла заказа, индивидуальный дизайн, приложение "МИР"
     """
-    pass
+    return _check_product_design(n, node, logger, saveback, **kw)
 
 def incoming_X5_custom(n, node, logger, saveback, **kw):
     """
         Загрузчик записи входящего файла заказа, проект "Пятерочка"
     """
-    pass
+    return _check_product_design(n, node, logger, saveback, **kw)
+
+def incoming_cyberlab_custom(n, node, logger, saveback, **kw):
+    """
+        Загрузчик записи входящего файла заказа, проект "КИБЕРЛАБ"
+    """
+    return _check_product_design(n, node, logger, saveback, **kw)
 
 def loyalty_custom(n, data, logger, saveback, **kw):
     """
@@ -278,14 +350,15 @@ def reference_custom(n, data, logger, saveback, **kw):
         return HANDLER_CODE_ERROR
 
     # Тарифный пояс
-    zone = data.get('Zone')
-    if not zone and (
-        data.get('NonamedPostType') == 'ПОЧТА 1 КЛАСС' or data.get('NamedPostType') == 'ПОЧТА 1 КЛАСС'):
-        res, errors = 'Zone is empty', [('Zone', ERROR_CHECKER_IS_EMPTY,),]
-        saveback['errors'].append((n, code, errors))
-        logger('>>> Запись: %s, код филиала: %s, %s %s' % (n, code, res, errors), is_error=True)
-        saveback[REF_INFO]['errors'] += 1
-        return HANDLER_CODE_ERROR
+    if LOCAL_CHECK_DELIVERY_ZONE:
+        zone = data.get('Zone')
+        if not zone and (
+            data.get('NonamedPostType') == 'ПОЧТА 1 КЛАСС' or data.get('NamedPostType') == 'ПОЧТА 1 КЛАСС'):
+            res, errors = 'Zone is empty', [('Zone', ERROR_CHECKER_IS_EMPTY,),]
+            saveback['errors'].append((n, code, errors))
+            logger('>>> Запись: %s, код филиала: %s, %s %s' % (n, code, res, errors), is_error=True)
+            saveback[REF_INFO]['errors'] += 1
+            return HANDLER_CODE_ERROR
 
     # ------------------------------------
     # Добавить/Обновить запись справочника
@@ -355,7 +428,7 @@ def outgoing(logger, saveback, is_error, **kw):
         get_error_code=local_GetErrorCode, 
         encoding=encoding, 
         eol=eol, 
-        no_ext=False, 
+        no_ext=True, 
         with_full_reject=True, 
         **kw
         )

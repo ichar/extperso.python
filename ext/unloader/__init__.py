@@ -16,6 +16,23 @@ from . import postbank
     Методы (атрибуты) базового класса:
 """
 
+# -------------------------------------- #
+#   Параметры командного интерпретатора  #
+# -------------------------------------- #
+
+command_scenario = {
+    'postbank' : 
+        {
+            'custom'   : postbank.sort_report, 
+            'tags'     : postbank.tags, 
+            'output'   : postbank.csv, 
+            'mode'     : 'ab', 
+            'EOL'      : crlf,
+
+            'keep_history' : 1,
+        },
+}
+
 # ------------------------------------------- #
 #   FileType : Status From-To-Error : Attrs   #
 # ------------------------------------------- #
@@ -61,6 +78,18 @@ scenario = [
         },
     ),
     (0, 'PostBank_X5',
+        [STATUS_REPORT_GEN_STARTED, STATUS_ON_READY_ACT_GEN,], # STATUS_REPORT_GEN_FINISHED
+        {
+            'custom'   : postbank.sort_report, 
+            'tags'     : postbank.tags, 
+            'output'   : postbank.csv, 
+            'mode'     : 'ab', 
+            'EOL'      : crlf,
+
+            'keep_history' : 1,
+        },
+    ),
+    (0, 'PostBank_CL',
         [STATUS_REPORT_GEN_STARTED, STATUS_ON_READY_ACT_GEN,], # STATUS_REPORT_GEN_FINISHED
         {
             'custom'   : postbank.sort_report, 

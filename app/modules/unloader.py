@@ -10,6 +10,7 @@ from . import (
     )
 
 from app.core import ET, ProcessException, AbstractOrderClass
+from app.srvlib import resumeSeen
 from app.types.errors import *
 
 ## ====================
@@ -39,13 +40,17 @@ class BaseProcess(AbstractOrderClass):
             Arguments:
                 n         -- Int, record number
                 data      -- bytes, line incoming data (XML)
+                parent    -- Object, parent class
 
             Keyword arguments:
                 encoding  -- String, data encoding type
                 option    -- String, decoder option {ignore|...}
 
             Class attributes:
+                _order    -- Order, order instance
                 _logger   -- Func, logger function
+                _saveback -- Dict, customr's saveback area
+                _connect  -- Func, database operational method
 
             Returns:
                 output[value]: bytes encoded with the given `encoding`.
@@ -81,6 +86,7 @@ class BaseProcess(AbstractOrderClass):
                 connect=self.connect,
                 service=self.service,
                 actions=self.actions,
+                params=self._params,
             )
 
         self.generate(output)
@@ -102,13 +108,19 @@ class BaseProcess(AbstractOrderClass):
         except ProcessException as ex:
             is_error = True
 
-            self._logger('[%s] %s. %s' % (self.class_info(), ex.__class__.__name__, ex), is_error=is_error)
+            self.set_exception(ex)
+
+            self._logger('[%s] %s: %s %s' % (self.class_info(), ex.__class__.__name__, self.order.filename, ex), is_error=is_error)
 
             if IsPrintExceptions:
                 print_exception(1)
 
             if callable(self._set_error):
                 self._set_error(self._mod_name, str(ex))
+
+        except:
+            resumeSeen(*self._saveback.get('seen', (None, 0)))
+            raise
 
         is_error = self.code == HANDLER_CODE_ERROR and True or False
 

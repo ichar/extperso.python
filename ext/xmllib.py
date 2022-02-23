@@ -1,14 +1,65 @@
 # -*- coding: cp1251 -*-
 
 from config import (
-     default_print_encoding, default_unicode, default_encoding, default_iso
+     IsDebug, UTC_FULL_TIMESTAMP,
+     default_print_encoding, default_unicode, default_encoding, default_iso, print_to
      )
 
+from app.utils import getDate, getToday
 from app.xmllib import *
+
+def print_log_space(info=None):
+    if IsDebug:
+        print_to(None, '\n>>> %s %s\n' % (getDate(getToday(), format=UTC_FULL_TIMESTAMP), info or ''))
 
 ## ==========================
 ## EXT: XML PRIVATE FUNCTIONS
 ## ==========================
+
+_DEFAULT_CORPUS = 'корп.'
+_DEFAULT_X1 = 'стр.'
+_DEFAULT_X2 = 'вл.'
+
+
+def checkTagExists(node, name):
+    """
+        Проверить существование тега с заданным именем в составе узла.
+
+        Аргументы:
+            node    -- ET.Element, узел-родитель
+            name    -- str, имя тега искомого элемента
+
+        Возврат:
+            Boolean, флаг True/False.
+    """
+    try:
+        item = node.find(name).text or None
+        return True
+    except:
+        return False
+
+def checkSetExists(ob, key, value=None, node=None):
+    """
+        Проверить существование элемента набора в словаре с заданным ключом.
+        
+        Аргументы:
+            ob      -- dict
+            key     -- str, имя ключа
+        
+        Ключевые аргументы:
+            value   -- any, значение элемента набора
+            node    -- ET.Element, текущий узел структуры
+
+        Возврат:
+            any, значение элемента.
+    """
+    if key not in ob:
+        ob[key] = set()
+    if value is None and node is not None:
+        value = getTag(node, key)
+    if value not in ob[key]:
+        ob[key].add(value)
+    return value
 
 def FMT_PinTag(key, value):
     """
@@ -71,13 +122,103 @@ def FMT_ParseFIO(node, key):
     n = n > 2 and 3 or n
     return dict(zip(items, x[:n]+[' ' for i in range(n,4)]))
 
-def FMT_ParseAddress(node, key):
+def FMT_ParseAddress(value, as_dict=None):
     items = ['index', 'region', 'district', 'city', 'town', 'street', 'house', 'building', 'flat']
-    x = getTag(node, key).split(',')
-    return dict(zip(items, x))
+    x = [x.strip() for x in value.split(',')]
+    # ** если 8.Корпус не пустое, конкатенируем <, корп.> и значение из 7.Дом.
+    if len(x) > 7 and x[7]:
+        x[7] = '%s%s' % (_DEFAULT_CORPUS, x[7])
+    if as_dict:
+        return dict(zip(items, x))
+    return ','.join(x)
 
 def FMT_CleanAddress(value):
     return value and ', '.join([x for x in value.split(',') if x]) or ''
+
+def _address_default(value, is_original=None):
+    if not value:
+        return {}
+
+    values = value.split(',')
+
+    items = [
+        (0, 'index'), 
+        (1, 'TR'), (2, 'region'), 
+        (3, 'TA'), (4, 'area'), 
+        (5, 'TL'), (6, 'location'), 
+        (7, 'TP'), (8, 'place'), 
+        (9, 'TS'), (10, 'street'), 
+        (11, 'house'), 
+        (12, 'corpus'), (13, 'x1'), (14, 'x2'), 
+        (15, 'room'),
+        ]
+    address = dict(zip([x[1] for x in items], [values[n].strip() for n, x in items]))
+
+    # Регион, область
+    address['region'] = ','.join(['.'.join([address['TR'], address['region']])])
+    # Район
+    address['area'] = ','.join([' '.join([address['TA'], address['area']])])
+    # Город, населенный пункт
+    # * если 4.Город и 5.Населённый пункт оба не пустые, конкатенируем через запятую. Если одно из них пустое, то в place не пустое значение.
+    address['place'] = ','.join([x for x in ['.'.join([address['TL'], address['location']]), '.'.join([address['TP'], address['place']])] if x and x != '.'])
+    # Улица
+    address['street'] = ','.join(['.'.join([address['TS'], address['street']])])
+
+    if is_original:
+        remove_tags = 'TR:TA:TL:TP:TS'
+        # Корпус
+        if address['corpus']:
+            address['corpus'] = '%s%s' % (_DEFAULT_CORPUS, address['corpus'])
+        # Строение
+        if address['x1']:
+            address['x1'] = '%s%s' % (_DEFAULT_X1, address['x1'])
+        # Владение
+        if address['x2']:
+            address['x2'] = '%s%s' % (_DEFAULT_X2, address['x2'])
+    else:
+        remove_tags = 'TR:TA:TL:TP:TS:x1:x2'
+        # Корпус
+        address['corpus'] = ','.join([x for x in [address['corpus'], address['x1'], address['x2']] if x])
+        # Микрорайон
+        address['location'] = ''
+
+    for x in remove_tags.split(':'):
+        del address[x]
+
+    return address
+
+def _address_type_pr01(value):
+    items = ['index', 'region', 'area', 'location', 'place', 'street', 'house', 'corpus', 'room']
+    values = value.split(',')
+    address = dict(zip(items, values))
+    # Город, Населенный пункт
+    # * если 4.Город и 5.Населённый пункт оба не пустые, конкатенируем через запятую. Если одно из них пустое, то в place не пустое значение.
+    location = address['location'].strip()
+    place = address['place'].strip()
+    if location and place:
+        address['place'] = ','.join([location, place])
+    else:
+        address['place'] = location or place or ''
+    address['location'] = ''
+    # Корпус
+    corpus = address['corpus']
+    if corpus.startswith(_DEFAULT_CORPUS):
+        address['corpus'] = corpus[len(_DEFAULT_CORPUS):]
+    return address
+
+def clean_address(value, **kw):
+    if not value:
+        return {}
+
+    if kw.get('delivery_canal_code') == 'PR01':
+        return _address_type_pr01(value)
+
+    return _address_default(value)
+
+def FMT_ParseDefaultAddress(value):
+    items = ['index', 'region', 'area', 'location', 'place', 'street', 'house', 'corpus', 'x1', 'x2', 'room']
+    address = _address_default(value, is_original=True)
+    return address and ','.join([address[x] for x in items if address.get(x)]) or ''
 
 def FMT_Limitstrlist(words, limit=20, comma=',', max_items=0):
     items = []

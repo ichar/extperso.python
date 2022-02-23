@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import sys
 from sqlalchemy import create_engine
 import pymssql
 
@@ -193,6 +194,9 @@ database_config = { \
     },
 }
 
+def getEncoding(encoding):
+    return encoding or sys.version_info > (3, 5) and default_encoding or default_iso
+
 
 class BankPersoEngine():
     
@@ -203,6 +207,8 @@ class BankPersoEngine():
         self.conn = self.engine.connect()
         self.engine_error = False
         self.user = user
+
+        self.encoding = getEncoding(self.connection.get('encoding'))
 
         if IsDeepDebug:
             print('>>> open connection[%s]' % self.name)
@@ -323,7 +329,10 @@ class BankPersoEngine():
 
                 for column in encode_columns:
                     if column in row or isinstance(column, int):
-                        row[column] = row[column] and row[column].encode(default_iso).decode(default_encoding) or ''
+                        if not row[column]:
+                            row[column] = ''
+                        elif self.encoding != default_encoding:
+                            row[column] = row[column].encode(self.encoding).decode(default_encoding)
                 for column in worder_columns:
                     row[column] = splitter(row[column], length=None, comma=':')
                 if mapping:

@@ -31,6 +31,8 @@ ERROR_CHECKER_BAD_EMBOSSNAME = 'BAD EMBOSSNAME'
 ERROR_CHECKER_BAD_EAN        = 'BAD EAN'
 ERROR_CHECKER_INVALID_VALUE  = 'INVALID VALUE'
 
+ERROR_OUT_OF_SERVICE = 'OS'
+
 ##  ===================
 ##  Handler Return Code
 ##  ===================
